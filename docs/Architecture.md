@@ -1,8 +1,8 @@
-# Architecture Documentation: Nura Neural (Dev/MVP Edition)
+# Architecture Documentation: Nura Neural / IRdecode AI Newsroom (Dev/MVP Edition)
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Last Updated:** January 31, 2026  
-**Environment:** Dev → MVP (June 30, 2026)
+**Environment:** Dev  MVP (June 30, 2026)
 
 ---
 
@@ -20,17 +20,25 @@
 | **Container Registry** | Azure ACR | `irdecodeprodacr` | Custom service images |
 | **Logging** | Log Analytics | `irdecode-prod-logs` | Centralized monitoring |
 | **CDN/WAF** | Azure Front Door | `irdecode-prod-fd` | Global edge + WAF protection |
+| **Vector Search** | Azure AI Search | `nura-search` | Vector + semantic/hybrid search |
 
-### 1.2 Services to Deploy
+### 1.2 Application Services (Deployed via Container Apps)
 
 | Component | Technology | SKU/Size | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Vector Search** | **Azure AI Search** | Basic (Dev) → Standard S1 (MVP) | Vector + semantic/hybrid search |
 | **RSS Aggregator** | Miniflux (Container App) | 0.25 vCPU / 0.5Gi | PostgreSQL-native feed reader |
 | **RSS Generator** | RSSHub (Container App) | 0.25 vCPU / 0.5Gi | Generates feeds for non-RSS sites |
 | **Text Extraction** | SMRY Fork (Container App) | 0.25 vCPU / 0.5Gi | Clean text extraction service |
 | **Cache** | Redis (Container App) | 0.25 vCPU / 0.5Gi | RSSHub caching layer |
-| **Widgets** | **Cloudflare Pages** | Free | Global CDN, DDoS protection, GitHub integration |
+| **Widgets (Phase 2+)** | **Cloudflare Pages** | Free | Global CDN, DDoS protection, GitHub integration |
+
+Deployed Container Apps in `irdecode-prod-rg`:
+
+- `irdecode-prod-n8n` (workflow engine)
+- `nura-miniflux` (RSS aggregator)
+- `nura-rsshub` (RSS generator/scraper)
+- `nura-redis` (cache for RSSHub and other workloads)
+- `nura-smry` (text extraction service)
 
 ### 1.3 AI/LLM Stack (Farsi/Arabic Optimized)
 
