@@ -1,8 +1,8 @@
-# Product Requirements Document: Nura Neural / IRdecode AI Newsroom
+# Product Requirements Document: Nura Neural (AI Newsroom MVP)
 
 **Version:** 1.1  
 **Date:** January 31, 2026  
-**Project Name:** Nura Neural / IRdecode AI Newsroom  
+**Project Name:** Nura Neural (AI Newsroom MVP)  
 **Target Launch:** June 30, 2026
 
 ---
@@ -10,11 +10,11 @@
 ## 1. Project Overview
 **Nura Neural** is an AI-powered intelligence platform designed to automatically detect propaganda, verify claims, and profile sources for media and activist organizations.
 
-For the first release, the primary product surface is the **IRdecode AI Newsroom**: an Iran-focused, mobile-first experience that aggregates Iran-related news and X/Twitter posts, clusters them into narratives, and evaluates each item and narrative for stance/bias, propaganda risk, virality, and plausibility ("closeness to reality"). Users get a daily briefing and narrative views, plus an automatically generated **daily morning podcast** summarising the last 24 hours.
+For the first release, the primary product surface is the **AI Newsroom**: an Iran-focused, mobile-first experience that aggregates Iran-related news and X/Twitter posts, clusters them into narratives, and evaluates each item and narrative for stance/bias, propaganda risk, virality, and plausibility ("closeness to reality"). Users get a daily briefing and narrative views, plus an automatically generated **daily morning podcast** summarising the last 24 hours.
 
-Embeddable web widgets (fact-check form, credibility badge, etc.) remain a core long-term goal of Nura Neural but are explicitly treated as a **later phase** and are not part of the initial IRdecode MVP scope.
+Embeddable web widgets (fact-check form, credibility badge, etc.) remain a core long-term goal of Nura Neural but are explicitly treated as a **later phase** and are not part of the initial MVP scope.
 
-The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (and Action4Iran.com as a later widget consumer in subsequent phases).
+The MVP will launch by June 30, 2026, with an initial newsroom site as the primary deployment (and additional widget consumers in subsequent phases).
 
 ## 1.1 Acronyms & Glossary
 
@@ -36,13 +36,13 @@ The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (a
 
 ## 2. User Stories
 
-### 2.1 IRdecode AI Newsroom (Phase 1 MVP)
-- **As a Reader in the Iranian diaspora**, I want to open IRdecode on my phone each morning and see the top Iran-related narratives from the last 24 hours (e.g., rumours of a US attack) so I can quickly understand what is being said and by whom.
+### 2.1 AI Newsroom (Phase 1 MVP)
+- **As a Reader in the Iranian diaspora**, I want to open the newsroom on my phone each morning and see the top Iran-related narratives from the last 24 hours (e.g., rumours of a US attack) so I can quickly understand what is being said and by whom.
 - **As a Reader**, I want each narrative and item to show stance/bias, propaganda risk, virality, and a simple plausibility band so I can judge which stories to take seriously.
 - **As a Reader**, I want to see major articles (e.g., from NYT) together with key reaction tweets/X posts (from regime media, opposition figures, journalists, etc.) so I can see how different actors are responding to the same story.
 - **As a Reader**, I want a short explanation of why an item or narrative has been rated as propaganda-heavy or plausible so I can build trust in the system’s judgement.
 - **As a Reader**, I want to subscribe to a daily morning podcast that summarises the previous 24 hours of Iran narratives in 8–15 minutes so I can stay updated while commuting or doing other tasks.
-- **As an Admin/Editor at IRdecode**, I want to configure and maintain curated source lists (feeds, accounts, newsletters) and see basic health of ingestion so I know the newsroom view is complete and reliable.
+- **As an Admin/Editor**, I want to configure and maintain curated source lists (feeds, accounts, newsletters) and see basic health of ingestion so I know the newsroom view is complete and reliable.
 
 ### 2.2 Nura Widgets (Phase 2+)
 - **As an Admin**, I want to configure RSS feeds and Twitter keywords so **Nura Neural** automatically ingests relevant content for analysis.
@@ -63,7 +63,7 @@ The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (a
 * **Analyst visibility:** Provide evidence-backed explanations and score history to support review and tuning.
 * **Monitoring:** Track source tier drift and ingestion health (e.g., alert if a high-impact source becomes unreliable).
 
-### 3.2 IRdecode AI Newsroom (Phase 1 MVP)
+### 3.2 AI Newsroom (Phase 1 MVP)
 * **Iran-Focused Aggregation:** Ingests Iran-related content from curated RSS/news feeds, newsletters, regime/official outlets, and selected X/Twitter accounts/keywords.
 * **Narrative Discovery:** Clusters individual items (articles and tweets) into narratives and labels them with concise, English summaries (e.g., "US preparing imminent strike on Iran").
 * **Evaluation Signals:** For each item and narrative, assigns stance/bias (e.g., pro-regime, anti-regime, neutral), propaganda/manipulation risk level, virality/reach indicator, and a plausibility band (e.g., unlikely / uncertain / plausible).
@@ -74,7 +74,7 @@ The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (a
 ### 3.3 Daily Morning Podcast (Phase 1 MVP)
 * **Automatic Script Generation:** Once per day, composes an English script summarising the top narratives and their evaluations from the last 24 hours using an LLM (e.g., Gemini or GPT-4o).
 * **Text-to-Speech Audio:** Converts the script into an 8–15 minute audio episode in a neutral news-style voice.
-* **Distribution:** Publishes the episode as a podcast feed (RSS) and exposes it via an embedded player on IRdecode.com, with basic metadata (title, date, covered narratives).
+* **Distribution:** Publishes the episode as a podcast feed (RSS) and exposes it via an embedded player on the primary newsroom site, with basic metadata (title, date, covered narratives).
 
 ### 3.4 Embeddable Widget Suite (Phase 2+)
 * **Fact-Check Form:** Instant verification for user-submitted text/URLs.

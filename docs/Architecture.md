@@ -1,4 +1,4 @@
-# Architecture Documentation: Nura Neural / IRdecode AI Newsroom (Dev/MVP Edition)
+# Architecture Documentation: Nura Neural (Dev/MVP Edition)
 
 **Version:** 2.1  
 **Last Updated:** January 31, 2026  
@@ -143,7 +143,7 @@ Deployed Container Apps in `irdecode-prod-rg`:
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │               Cloudflare Pages (widgets.nura-neural.com)      │  │
 │  │    ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │  │
-│  │    │ irdecode.com│  │Action4Iran  │  │  Embeddable iframes │  │  │
+│  │    │ Newsroom Site│  │Consumer Site│  │  Embeddable iframes │  │  │
 │  │    └─────────────┘  └─────────────┘  └─────────────────────┘  │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘

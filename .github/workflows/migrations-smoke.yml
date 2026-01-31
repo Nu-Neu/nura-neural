@@ -1,0 +1,63 @@
+name: migrations-smoke
+
+on:
+  pull_request:
+    paths:
+      - 'database/**'
+      - 'scripts/db_*.ps1'
+  push:
+    branches: [ main ]
+    paths:
+      - 'database/**'
+      - 'scripts/db_*.ps1'
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap baseline migration
+        shell: pwsh
+        run: |
+          ./scripts/db_bootstrap_baseline_migration.ps1
+
+      - name: Run Flyway migrations (docker)
+        shell: bash
+        run: |
+          set -euo pipefail
+          jdbc='jdbc:postgresql://localhost:5432/postgres'
+          docker run --rm --network host \
+            -e FLYWAY_URL="$jdbc" \
+            -e FLYWAY_USER=postgres \
+            -e FLYWAY_PASSWORD=postgres \
+            -e FLYWAY_SCHEMAS=public \
+            -v "$PWD/database/migrations:/flyway/sql" \
+            flyway/flyway:10 \
+            -connectRetries=10 migrate
+
+      - name: Smoke check expected tables
+        shell: pwsh
+        env:
+          DB_HOST: localhost
+          DB_PORT: '5432'
+          DB_NAME: postgres
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: |
+          ./scripts/db_smokecheck.ps1

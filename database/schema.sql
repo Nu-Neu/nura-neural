@@ -1,16 +1,16 @@
 -- =============================================================================
--- Nura Neural / IRdecode AI Newsroom - PostgreSQL Schema
+-- Nura - PostgreSQL Schema
 -- Version: 2.1
 -- Date: January 31, 2026
 -- 
--- Deployment Model: SINGLE-TENANT (one database per client)
--- Each client (IRdecode, Action4Iran, etc.) gets their own:
---   - Database instance (e.g., irdecode_nura, action4iran_nura)
+-- Deployment Model: DB-PER-TENANT (one database per tenant)
+-- Each tenant gets their own:
+--   - Database (e.g., tenant1_nura)
 --   - Azure AI Search index
 --   - Blob storage container
 -- 
 -- Design Principles:
--- 1. Single-tenant for isolation, security, and client-specific customization
+-- 1. Tenant isolation for security and customization
 -- 2. Proper normalization with strategic denormalization for performance
 -- 3. Audit trails for all AI evaluations (historical tracking)
 -- 4. Entity extraction and relationship modeling

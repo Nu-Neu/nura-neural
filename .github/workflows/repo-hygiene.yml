@@ -1,0 +1,28 @@
+name: repo-hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  forbid-sensitive-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if forbidden files are tracked
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden_regex='(^|/)(terraform\.tfstate(\..*)?$|terraform\.tfvars$|tfplan$|\.env(\..*)?$|.*\.(pem|key|pfx|p12)$)'
+
+          tracked=$(git ls-files | grep -E "$forbidden_regex" || true)
+          if [ -n "$tracked" ]; then
+            echo "Forbidden tracked files detected:" 
+            echo "$tracked"
+            exit 1
+          fi
+
+          echo "OK: no forbidden tracked files."
