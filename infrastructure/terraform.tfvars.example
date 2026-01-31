@@ -1,0 +1,50 @@
+# Nura Neural - Terraform Variables
+# Copy this file to terraform.tfvars and fill in values
+
+# ===========================================
+# Required - Azure Subscription
+# ===========================================
+subscription_id = "0029263c-cf9e-4e08-b543-2eeea360c7fc"
+
+# ===========================================
+# Project Configuration
+# ===========================================
+project_name = "nura"
+search_sku   = "basic"  # Use "standard" for MVP
+
+# ===========================================
+# Existing Infrastructure (defaults are correct)
+# ===========================================
+# existing_resource_group  = "irdecode-prod-rg"
+# existing_aca_environment = "irdecode-prod-n8n-env"
+# existing_postgres_server = "irdecode-prod-psql"
+# existing_storage_account = "irdecodeprodst"
+# existing_key_vault       = "irdecode-prod-kv"
+# existing_acr_name        = "irdecodeprodacr"
+
+# ===========================================
+# PostgreSQL Credentials (REQUIRED)
+# Get from: az keyvault secret show --vault-name irdecode-prod-kv --name postgres-admin-password
+# ===========================================
+postgres_user     = "YOUR_POSTGRES_ADMIN_USER"
+postgres_password = "YOUR_POSTGRES_ADMIN_PASSWORD"
+
+# ===========================================
+# Miniflux Configuration (REQUIRED)
+# ===========================================
+miniflux_admin_user     = "admin"
+miniflux_admin_password = "GENERATE_A_STRONG_PASSWORD"
+
+# ===========================================
+# API Keys (Optional - can add later via Key Vault)
+# ===========================================
+twitterapi_io_key = ""
+
+# ===========================================
+# Tags
+# ===========================================
+tags = {
+  project     = "nura-neural"
+  environment = "dev"
+  managed_by  = "terraform"
+}
