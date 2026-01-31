@@ -16,6 +16,24 @@ Embeddable web widgets (fact-check form, credibility badge, etc.) remain a core 
 
 The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (and Action4Iran.com as a later widget consumer in subsequent phases).
 
+## 1.1 Acronyms & Glossary
+
+### IMTT (Information Manipulation Typology Tool)
+**IMTT** is a source assessment framework published by **IREX**. In Nura, “IMTT-inspired metrics” means we score sources using four pillars and store those scores with an evidence-backed rationale to support explainable credibility tiers.
+
+**Pillars**
+- **Independence**: Independence from the political/financial actors the outlet covers.
+- **Methodology**: Reporting standards and practices (sourcing, corrections, evidence discipline).
+- **Transparency**: Ownership/funding disclosure, author disclosure, conflict-of-interest signals.
+- **Triangulation**: Cross-checking against primary evidence and other reliable sources.
+
+**Scoring (recommended for MVP)**
+- Each pillar is scored **0–5** (0 = absent/very weak, 5 = strong).
+- A derived **credibility tier** is computed from the pillar scores (e.g., `authoritative`, `reliable`, `mixed`, `questionable`, `propaganda`) and surfaced in the UI.
+- Source evaluations should include a short explanation and supporting evidence links (human-readable and machine-parsable) for auditability.
+
+**References**: IREX – Information Manipulation Typology Tool (IMTT): https://www.irex.org/resource/information-manipulation-typology-tool-imtt
+
 ## 2. User Stories
 
 ### 2.1 IRdecode AI Newsroom (Phase 1 MVP)
@@ -28,7 +46,7 @@ The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (a
 
 ### 2.2 Nura Widgets (Phase 2+)
 - **As an Admin**, I want to configure RSS feeds and Twitter keywords so **Nura Neural** automatically ingests relevant content for analysis.
-- **As a Researcher**, I want "Agent 1" to evaluate sources using the **IMTT rubric** (Independence, Methodology, Transparency, Triangulation) to identify propaganda outlets.
+- **As a Researcher**, I want "Agent 1" to evaluate sources using the **IMTT rubric** (see [IMTT](#imtt)) to identify propaganda outlets.
 - **As a Researcher**, I want "Agent 2" to cluster semantically similar claims into narratives so I can track the evolution of disinformation campaigns.
 - **As a Journalist**, I want to use the **Nura Neural Widget** to instantly fact-check text or URLs against verified evidence.
 - **As a Site Owner**, I want to embed a "Credibility Badge" that displays a source's trust score to my readers.
@@ -38,6 +56,12 @@ The MVP will launch by June 30, 2026, with IRdecode.com as the primary client (a
 ### 3.1 Dual-Agent Backend (Core Platform)
 * **Source Evaluator (Agent 1):** Classifies sources (Baseline, Propaganda, etc.) with evidence logs and confidence scores based on the IMTT rubric.
 * **Narrative Clusterer (Agent 2):** Groups semantically similar claims to map narrative evolution over time.
+
+#### Where IMTT is used
+* **UI badges:** Display a source credibility tier and short rationale next to domains/authors.
+* **Ranking & clustering:** Weight content/narratives by source tier and/or pillar scores (e.g., down-rank low-triangulation sources).
+* **Analyst visibility:** Provide evidence-backed explanations and score history to support review and tuning.
+* **Monitoring:** Track source tier drift and ingestion health (e.g., alert if a high-impact source becomes unreliable).
 
 ### 3.2 IRdecode AI Newsroom (Phase 1 MVP)
 * **Iran-Focused Aggregation:** Ingests Iran-related content from curated RSS/news feeds, newsletters, regime/official outlets, and selected X/Twitter accounts/keywords.
