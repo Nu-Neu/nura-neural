@@ -2,16 +2,16 @@
 
 A neural network project.
 
-Status
+## Status
 - Work in progress — see docs/PRD.md for product requirements and planned features.
 
-Quick start
+## Quick start
 - Prerequisites: Docker, PowerShell (for some scripts), Flyway (used in CI via Docker).
 - Apply DB migrations and run smoke checks:
   - Run the scripts in scripts/ (see database/migrations/README.md).
   - CI runs a migrations smoke test automatically on PRs that touch database/** or scripts/db_*.ps1.
 
-CI / Workflows
+## CI / Workflows
 - <a href="https://github.com/Nu-Neu/nura-neural/actions/workflows/migrations-smoke.yml"><img src="https://github.com/Nu-Neu/nura-neural/actions/workflows/migrations-smoke.yml/badge.svg"></a>
   - Purpose: Apply and smoke-test DB migrations against a postgres:16 service using Flyway.
   - Triggers: pull_request and push on main when database/** or scripts/db_*.ps1 change.
@@ -22,7 +22,7 @@ CI / Workflows
   - Purpose: Run terraform fmt, init (no backend), and validate inside infrastructure/.
   - Triggers: pull_request and push to main when infrastructure/** changes.
 
-Project index (top-level)
+## Project index (top-level)
 - README.md
 - docs/
   - PRD.md
@@ -45,19 +45,19 @@ Project index (top-level)
 - LICENSE (if present)
 - CONTRIBUTING.md (if present)
 
-Repository structure notes
+## Repository structure notes
 - Database migrations are SQL-first and versioned in database/migrations (Flyway style).
 - CI is path-filtered to run only relevant workflows for database and infrastructure changes.
 - repo-hygiene protects against committing secrets/artifacts.
 
-Contributing
+## Contributing
 - Please open issues or PRs. Follow the repo-hygiene checks before committing (avoid tracking secrets/terraform state).
 - Add new migrations as V{N}__{description}.sql; do not edit applied migrations.
 
-References
+## References
 - Documentation: docs/PRD.md
 - DB migrations: database/migrations/README.md
 
-Contact / Maintainers
+## Contact / Maintainers
 - Repo: https://github.com/Nu-Neu/nura-neural
 - Maintainers: (add maintainers / contact details here)
