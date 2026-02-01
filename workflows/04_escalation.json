@@ -1,0 +1,733 @@
+{
+  "name": "WF-03: Agent 2 - Narrative Clustering",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "path": "cluster-claims",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Cluster Claims Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 200],
+      "webhookId": "cluster-claims-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  cl.claim_id,\n  cl.content_id,\n  cl.claim_text,\n  cl.claim_text_en,\n  cl.language,\n  cl.claim_type,\n  cl.confidence,\n  cl.subject_text,\n  c.source_id,\n  s.credibility_tier,\n  c.published_at,\n  cl.created_at\nFROM claims cl\nJOIN content c ON cl.content_id = c.content_id\nLEFT JOIN sources s ON c.source_id = s.source_id\nWHERE cl.created_at >= NOW() - INTERVAL '48 hours'\n  AND cl.claim_text_en IS NOT NULL\n  AND char_length(cl.claim_text_en) > 20\n  AND NOT EXISTS (\n      SELECT 1 FROM claim_narratives cn\n      WHERE cn.claim_id = cl.claim_id\n  )\nORDER BY cl.created_at DESC\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "get-unclustered-claims",
+      "name": "Get Unclustered Claims",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [300, 100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-claims",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-claims",
+      "name": "Has Claims?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [520, 100]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "loop-over-claims",
+      "name": "Loop Over Claims",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [740, 0]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {
+          "dimensions": 3072
+        }
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embedding",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [960, 0],
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai",
+          "name": "Azure OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nura-search.search.windows.net/indexes/nura-claims/docs/index?api-version=2024-07-01",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  value: [{\n    '@search.action': 'mergeOrUpload',\n    id: $('Loop Over Claims').item.json.claim_id,\n    claim_id: $('Loop Over Claims').item.json.claim_id,\n    content_id: $('Loop Over Claims').item.json.content_id,\n    claim_text: $('Loop Over Claims').item.json.claim_text,\n    claim_text_en: $('Loop Over Claims').item.json.claim_text_en,\n    claim_type: $('Loop Over Claims').item.json.claim_type,\n    language: $('Loop Over Claims').item.json.language,\n    source_credibility: $('Loop Over Claims').item.json.credibility_tier || 'unverified',\n    extracted_at: new Date().toISOString(),\n    embedding: $('Generate Embedding').item.json.embedding\n  }]\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "upsert-to-ai-search",
+      "name": "Upsert to AI Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ai-search-auth",
+          "name": "Azure AI Search"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nura-search.search.windows.net/indexes/nura-claims/docs/search?api-version=2024-07-01",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  count: true,\n  select: 'claim_id,claim_text_en,claim_type,source_credibility',\n  top: 20,\n  vectorQueries: [{\n    kind: 'vector',\n    vector: $('Generate Embedding').item.json.embedding,\n    fields: 'embedding',\n    k: 20\n  }],\n  filter: \"claim_id ne '\" + $('Loop Over Claims').item.json.claim_id + \"'\"\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "find-similar-claims",
+      "name": "Find Similar Claims",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ai-search-auth",
+          "name": "Azure AI Search"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const currentClaim = $('Loop Over Claims').item.json;\nconst searchResults = $json.value || [];\n\n// Filter by similarity threshold (score > 0.85)\nconst similarClaims = searchResults\n  .filter(r => r['@search.score'] > 0.85)\n  .map(r => ({\n    claim_id: r.claim_id,\n    claim_text_en: r.claim_text_en,\n    claim_type: r.claim_type,\n    source_credibility: r.source_credibility,\n    score: r['@search.score']\n  }));\n\n// Include current claim\nconst cluster = [\n  {\n    claim_id: currentClaim.claim_id,\n    claim_text_en: currentClaim.claim_text_en,\n    claim_type: currentClaim.claim_type,\n    source_credibility: currentClaim.credibility_tier || 'unverified',\n    score: 1.0\n  },\n  ...similarClaims\n];\n\n// Only create narrative if we have at least 2 claims\nconst needsNarrative = cluster.length >= 2;\n\nreturn {\n  current_claim: currentClaim,\n  cluster: cluster,\n  cluster_size: cluster.length,\n  needs_narrative: needsNarrative,\n  cluster_claims_text: cluster.map(c => '- ' + c.claim_text_en).join('\\n')\n};"
+      },
+      "id": "group-similar-claims",
+      "name": "Group Similar Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1620, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-narrative",
+              "leftValue": "={{ $json.needs_narrative }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-needs-narrative",
+      "name": "Needs Narrative?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1840, 0]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You generate concise narrative labels for clusters of related claims about Iran. Labels should be:\n- Specific and descriptive (not vague)\n- 5-15 words in English\n- Written as a statement/headline\n- Neutral in tone\n\nYou also provide translations in Farsi (Persian) and Arabic.\n\nRespond in valid JSON only. No markdown, no explanations outside JSON."
+            },
+            {
+              "role": "user",
+              "content": "Generate a narrative label for this cluster of {{ $json.cluster_size }} related claims:\n\n{{ $json.cluster_claims_text }}\n\nRespond with this exact JSON structure:\n```json\n{\n  \"label\": \"English narrative label (5-15 words)\",\n  \"label_fa\": \"Persian/Farsi translation of the label\",\n  \"label_ar\": \"Arabic translation of the label\",\n  \"description\": \"1-2 sentence description in English explaining what this narrative is about\",\n  \"dominant_stance\": \"pro_regime|anti_regime|pro_western|anti_western|neutral|mixed\"\n}\n```"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500,
+          "responseFormat": "json_object"
+        }
+      },
+      "id": "generate-narrative-label",
+      "name": "Generate Narrative Label",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [2060, -100],
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai",
+          "name": "Azure OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const groupData = $('Group Similar Claims').item.json;\nconst labelRaw = $json;\n\n// Parse GPT response\nlet labelData;\ntry {\n  if (typeof labelRaw.message?.content === 'string') {\n    labelData = JSON.parse(labelRaw.message.content);\n  } else if (labelRaw.label) {\n    labelData = labelRaw;\n  } else {\n    throw new Error('Invalid response format');\n  }\n} catch (e) {\n  // Fallback label based on first claim\n  labelData = {\n    label: groupData.current_claim.claim_text_en.slice(0, 100),\n    label_fa: null,\n    label_ar: null,\n    description: 'Auto-generated narrative from claim cluster',\n    dominant_stance: 'unknown'\n  };\n}\n\nreturn {\n  ...groupData,\n  label: labelData.label,\n  label_fa: labelData.label_fa,\n  label_ar: labelData.label_ar,\n  description: labelData.description,\n  dominant_stance: labelData.dominant_stance || 'unknown'\n};"
+      },
+      "id": "parse-narrative-label",
+      "name": "Parse Narrative Label",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2280, -100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO narratives (\n  label,\n  label_fa,\n  label_ar,\n  description,\n  dominant_stance,\n  content_count,\n  claim_count,\n  first_seen_at,\n  last_activity_at,\n  is_active\n) VALUES (\n  $1, $2, $3, $4, $5::stance, 1, $6, NOW(), NOW(), true\n)\nON CONFLICT (label) DO UPDATE SET\n  claim_count = narratives.claim_count + EXCLUDED.claim_count,\n  last_activity_at = NOW(),\n  description = COALESCE(EXCLUDED.description, narratives.description)\nRETURNING narrative_id, label, claim_count;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.label,\n  $json.label_fa || null,\n  $json.label_ar || null,\n  $json.description || null,\n  $json.dominant_stance || 'unknown',\n  $json.cluster_size\n] }}"
+        }
+      },
+      "id": "upsert-narrative",
+      "name": "Upsert Narrative",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2500, -100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO claim_narratives (claim_id, narrative_id, similarity_score, is_core_claim, assigned_by)\nSELECT \n  (claim->>'claim_id')::uuid,\n  $1::uuid,\n  COALESCE((claim->>'score')::float, 0.5),\n  COALESCE((claim->>'score')::float, 0.5) > 0.95,\n  'agent2'\nFROM jsonb_array_elements($2::jsonb) AS claim\nON CONFLICT (claim_id, narrative_id) DO UPDATE SET\n  similarity_score = EXCLUDED.similarity_score,\n  is_core_claim = EXCLUDED.is_core_claim\nRETURNING claim_id, narrative_id;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Upsert Narrative').item.json[0].narrative_id,\n  JSON.stringify($('Parse Narrative Label').item.json.cluster)\n] }}"
+        }
+      },
+      "id": "link-claims-to-narrative",
+      "name": "Link Claims to Narrative",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2720, -100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Update narrative aggregate stats\nUPDATE narratives n\nSET \n  claim_count = (\n    SELECT COUNT(*) FROM claim_narratives cn WHERE cn.narrative_id = n.narrative_id\n  ),\n  content_count = (\n    SELECT COUNT(DISTINCT cl.content_id) \n    FROM claim_narratives cn \n    JOIN claims cl ON cn.claim_id = cl.claim_id \n    WHERE cn.narrative_id = n.narrative_id\n  ),\n  source_count = (\n    SELECT COUNT(DISTINCT c.source_id) \n    FROM claim_narratives cn \n    JOIN claims cl ON cn.claim_id = cl.claim_id \n    JOIN content c ON cl.content_id = c.content_id\n    WHERE cn.narrative_id = n.narrative_id\n  ),\n  last_activity_at = NOW()\nWHERE n.narrative_id = $1;",
+        "options": {
+          "queryReplacement": "={{ [$('Upsert Narrative').item.json[0].narrative_id] }}"
+        }
+      },
+      "id": "update-narrative-stats",
+      "name": "Update Narrative Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2940, -100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO analysis_log (\n  agent_name,\n  run_type,\n  started_at,\n  completed_at,\n  duration_ms,\n  items_processed,\n  items_success,\n  items_failed,\n  status,\n  metadata,\n  workflow_execution_id\n) VALUES (\n  'agent2',\n  'narrative_clustering',\n  $1,\n  NOW(),\n  $2,\n  $3,\n  $4,\n  0,\n  'completed',\n  $5::jsonb,\n  $6\n);",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Every 6 Hours').item?.json?.timestamp || $('Cluster Claims Webhook').item?.json?.timestamp || new Date().toISOString(),\n  Date.now() - new Date($('Every 6 Hours').item?.json?.timestamp || $('Cluster Claims Webhook').item?.json?.timestamp || new Date()).getTime(),\n  $('Get Unclustered Claims').item?.json?.length || 0,\n  $itemIndex + 1,\n  JSON.stringify({\n    narratives_created: 1,\n    claims_linked: $('Parse Narrative Label').item?.json?.cluster_size || 0\n  }),\n  $executionId\n] }}"
+        }
+      },
+      "id": "log-clustering",
+      "name": "Log Clustering",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3160, -100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Skip claims that don't need a narrative (single claims)\n// Just log that they were processed\nconst groupData = $json;\n\nreturn {\n  skipped: true,\n  reason: 'Single claim - no cluster formed',\n  claim_id: groupData.current_claim?.claim_id,\n  cluster_size: groupData.cluster_size\n};"
+      },
+      "id": "skip-single-claims",
+      "name": "Skip Single Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2060, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: 'completed',\n  execution_id: $executionId,\n  claims_processed: $('Get Unclustered Claims').item?.json?.length || 0,\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3380, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-webhook",
+              "leftValue": "={{ $('Cluster Claims Webhook').item !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-webhook-trigger",
+      "name": "Is Webhook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3380, -100]
+    },
+    {
+      "parameters": {},
+      "id": "no-op-end",
+      "name": "End (Schedule)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3600, -200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Record that we skipped this claim (no cluster formed)\nINSERT INTO analysis_log (\n  agent_name,\n  run_type,\n  started_at,\n  completed_at,\n  status,\n  metadata,\n  workflow_execution_id\n) VALUES (\n  'agent2',\n  'claim_skip',\n  NOW(),\n  NOW(),\n  'skipped',\n  $1::jsonb,\n  $2\n);",
+        "options": {
+          "queryReplacement": "={{ [\n  JSON.stringify({\n    claim_id: $json.claim_id,\n    reason: $json.reason,\n    cluster_size: $json.cluster_size\n  }),\n  $executionId\n] }}"
+        }
+      },
+      "id": "log-skipped-claim",
+      "name": "Log Skipped Claim",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2280, 100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "merge-paths",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2500, 100]
+    },
+    {
+      "parameters": {},
+      "id": "loop-done",
+      "name": "Loop Done?",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2720, 100]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Unclustered Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cluster Claims Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Unclustered Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Unclustered Claims": {
+      "main": [
+        [
+          {
+            "node": "Has Claims?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Claims?": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Claims",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Webhook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Claims": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Webhook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Upsert to AI Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert to AI Search": {
+      "main": [
+        [
+          {
+            "node": "Find Similar Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Similar Claims": {
+      "main": [
+        [
+          {
+            "node": "Group Similar Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Similar Claims": {
+      "main": [
+        [
+          {
+            "node": "Needs Narrative?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Narrative?": {
+      "main": [
+        [
+          {
+            "node": "Generate Narrative Label",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Single Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Narrative Label": {
+      "main": [
+        [
+          {
+            "node": "Parse Narrative Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Narrative Label": {
+      "main": [
+        [
+          {
+            "node": "Upsert Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Narrative": {
+      "main": [
+        [
+          {
+            "node": "Link Claims to Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Claims to Narrative": {
+      "main": [
+        [
+          {
+            "node": "Update Narrative Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Narrative Stats": {
+      "main": [
+        [
+          {
+            "node": "Log Clustering",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Clustering": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Single Claims": {
+      "main": [
+        [
+          {
+            "node": "Log Skipped Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Skipped Claim": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Loop Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Done?": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Webhook?": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End (Schedule)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "nura-neural",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "name": "agent2",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "name": "narrative-clustering",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 2,
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "nura-neural-instance"
+  }
+}
