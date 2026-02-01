@@ -34,10 +34,10 @@ output "rsshub_internal_url" {
   value       = "http://${azurerm_container_app.rsshub.name}"
 }
 
-output "smry_internal_url" {
-  description = "SMRY text extractor internal URL (for n8n)"
-  value       = "http://${azurerm_container_app.smry.name}:3000"
-}
+# output "smry_internal_url" {
+#   description = "SMRY text extractor internal URL (for n8n)"
+#   value       = "http://${azurerm_container_app.smry.name}:3000"
+# }
 
 output "redis_internal_url" {
   description = "Redis internal URL (for caching)"
@@ -130,9 +130,9 @@ output "n8n_credential_config" {
       url  = "https://${azurerm_container_app.miniflux.ingress[0].fqdn}"
       note = "API key available in Miniflux settings after first login"
     }
-    smry = {
-      url = "http://${azurerm_container_app.smry.name}:3000"
-    }
+    # smry = {
+    #   url = "http://${azurerm_container_app.smry.name}:3000"
+    # }
   }
 }
 
@@ -154,8 +154,8 @@ output "deployment_summary" {
     ║ CONTAINER APPS                                               ║
     ║   Miniflux:   https://${azurerm_container_app.miniflux.ingress[0].fqdn}
     ║   RSSHub:     ${azurerm_container_app.rsshub.name} (internal)
-    ║   SMRY:       ${azurerm_container_app.smry.name}:3000 (internal)
     ║   Redis:      ${azurerm_container_app.redis.name}:6379 (internal)
+    ║   SMRY:       (commented - requires custom Docker build)     ║
     ╠══════════════════════════════════════════════════════════════╣
     ║ POSTGRESQL                                                   ║
     ║   Host:       ${data.azurerm_postgresql_flexible_server.existing.fqdn}
@@ -166,12 +166,12 @@ output "deployment_summary" {
     ║   Containers: nura-content, nura-embeddings
     ╠══════════════════════════════════════════════════════════════╣
     ║ NEXT STEPS                                                   ║
-    ║   1. Build & push nura-smry image to ACR                     ║
-    ║   2. Apply database schema: psql -f database/schema.sql      ║
-    ║   3. Create AI Search indexes: ./create-search-indexes.ps1   ║
-    ║   4. Configure n8n credentials (see n8n_credential_config)   ║
-    ║   5. Import n8n workflows from workflows/*.json              ║
-    ║   6. Add RSS feeds to Miniflux                               ║
+    ║   1. Apply database schema: psql -f database/schema.sql      ║
+    ║   2. Create AI Search indexes: ./create-search-indexes.ps1   ║
+    ║   3. Configure n8n credentials (see n8n_credential_config)   ║
+    ║   4. Import n8n workflows from workflows/*.json              ║
+    ║   5. Add RSS feeds to Miniflux                               ║
+    ║   6. Deploy SMRY: Build & push custom Docker image to ACR    ║
     ╚══════════════════════════════════════════════════════════════╝
 
   EOT

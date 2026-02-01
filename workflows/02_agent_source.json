@@ -35,7 +35,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.content_id = $1::uuid\n  AND c.analysis_status = 'pending'\nLIMIT 1",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.created_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.content_id = $1::uuid\n  AND c.analysis_status = 'pending'\nLIMIT 1",
         "options": {
           "queryReplacement": "={{ [$json.body?.content_id || $json.query?.content_id] }}"
         }
@@ -55,7 +55,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.analysis_status = 'pending'\nORDER BY c.ingested_at ASC\nLIMIT 10",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.created_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.analysis_status = 'pending'\nORDER BY c.ingested_at ASC\nLIMIT 10",
         "options": {}
       },
       "id": "get-pending-batch",
@@ -79,7 +79,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "leftValue": "={{ $json.length }}",
+              "leftValue": "={{ $input.all().length }}",
               "rightValue": 0,
               "operator": {
                 "type": "number",
@@ -135,7 +135,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Prepare context from similar content search\nconst content = $('Process Each Content').item.json;\nconst searchResults = $json?.value || [];\n\n// Format context from similar claims\nconst contextClaims = searchResults\n  .slice(0, 3)\n  .map(r => `- ${r.claim_text_en} (Source tier: ${r.source_credibility})`)\n  .join('\\n');\n\n// Truncate content for API limits\nconst maxContentLength = 12000;\nlet contentText = content.content_text || '';\nif (contentText.length > maxContentLength) {\n  contentText = contentText.slice(0, maxContentLength) + '\\n\\n[Content truncated due to length...]';\n}\n\nreturn {\n  ...content,\n  content_text_truncated: contentText,\n  context_claims: contextClaims || 'No similar claims found in database.',\n  has_context: searchResults.length > 0\n};"
+        "jsCode": "// Prepare context from similar content search\nconst content = $('Process Each Content').item.json;\nconst searchResults = $json?.value || [];\n\n// Format context from similar claims\nconst contextClaims = searchResults\n  .slice(0, 3)\n  .map(r => `- ${r.claim_text_en} (Source tier: ${r.source_credibility})`)\n  .join('\\n');\n\n// Truncate content for API limits\nconst maxContentLength = 12000;\nlet contentText = content.content_text || '';\nif (contentText.length > maxContentLength) {\n  contentText = contentText.slice(0, maxContentLength) + '\\n\\n[Content truncated due to length...]';\n}\n\n// Build the IMTT analysis prompt for Azure OpenAI\nconst chatInput = `Analyze the following content using the IMTT framework.\n\n**Source**: ${content.source_name || 'Unknown'} (${content.source_domain || 'Unknown domain'})\n**Source Country**: ${content.source_country || 'Unknown'}\n**Current Credibility Tier**: ${content.current_tier || 'unverified'}\n**Title**: ${content.title || 'No title'}\n**Language**: ${content.language || 'Unknown'}\n**Published**: ${content.published_at || 'Unknown date'}\n\n**Content**:\n${contentText}\n\n**Context - Similar Claims**:\n${contextClaims || 'No similar claims found in database.'}\n\nScore each IMTT pillar (0.0-1.0):\n- INDEPENDENCE: Is this source independent from political/financial actors?\n- METHODOLOGY: Does content follow journalistic standards?\n- TRANSPARENCY: Is ownership/funding/authorship disclosed?\n- TRIANGULATION: Is information cross-checked against other sources?\n\nExtract 3-7 verifiable claims and detect any propaganda techniques.\n\nRespond with JSON:\n{\n  \"imtt_scores\": {\n    \"independence\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"methodology\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"transparency\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"triangulation\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] }\n  },\n  \"total_score\": 0.0-1.0,\n  \"total_score_20\": 0-20,\n  \"credibility_tier\": \"authoritative|reliable|mixed|questionable|propaganda\",\n  \"tier_reasoning\": \"...\",\n  \"propaganda_techniques\": [{ \"technique\": \"...\", \"evidence\": \"...\", \"severity\": \"low|medium|high\" }],\n  \"claims\": [{ \"original_text\": \"...\", \"english_translation\": \"...\", \"language\": \"fa|ar|en\", \"claim_type\": \"concrete|attribution|causal|predictive|quantitative|narrative\", \"verifiability\": \"high|medium|low\", \"confidence\": 0.0-1.0, \"subject\": \"...\", \"requires_fact_check\": true|false }],\n  \"content_analysis\": { \"stance\": \"pro_regime|anti_regime|pro_western|anti_western|neutral|mixed\", \"stance_confidence\": 0.0-1.0, \"primary_topic\": \"...\", \"emotional_tone\": \"neutral|alarming|celebratory|critical|defensive\" },\n  \"overall_assessment\": \"...\",\n  \"confidence\": 0.0-1.0,\n  \"needs_escalation\": true|false,\n  \"escalation_reason\": \"...\"\n}`;\n\nreturn {\n  ...content,\n  content_text_truncated: contentText,\n  context_claims: contextClaims || 'No similar claims found in database.',\n  has_context: searchResults.length > 0,\n  chatInput: chatInput\n};"
       },
       "id": "prepare-context",
       "name": "Prepare Analysis Context",
@@ -145,45 +145,50 @@
     },
     {
       "parameters": {
-        "resource": "chat",
-        "model": "gpt-4o",
+        "prompt": "={{ $json.chatInput }}",
+        "hasOutputParser": false,
         "messages": {
-          "values": [
+          "messageValues": [
             {
-              "role": "system",
-              "content": "You are an expert media analyst specializing in evaluating news sources and content using the IMTT (Information Manipulation Typology Tool) framework, adapted for the Iranian/Middle Eastern media landscape.\n\nYou analyze content in Farsi (Persian), Arabic, Hebrew, Turkish, and English with deep cultural and political awareness.\n\nYou MUST:\n1. Preserve original language text EXACTLY when extracting claims\n2. Provide accurate English translations for all non-English content\n3. Cite specific evidence from the content for every score\n4. Be aware of common propaganda techniques in regional media\n5. Distinguish between factual reporting bias and intentional manipulation\n\nRespond ONLY with valid JSON. No markdown formatting, no code blocks, just raw JSON."
-            },
-            {
-              "role": "user",
-              "content": "Analyze the following content using the IMTT framework.\n\n**Source**: {{ $json.source_name || 'Unknown' }} ({{ $json.source_domain || 'Unknown domain' }})\n**Source Country**: {{ $json.source_country || 'Unknown' }}\n**Current Credibility Tier**: {{ $json.current_tier || 'unverified' }}\n**Title**: {{ $json.title || 'No title' }}\n**Language**: {{ $json.language || 'Unknown' }}\n**Published**: {{ $json.published_at || 'Unknown date' }}\n\n**Content**:\n{{ $json.content_text_truncated }}\n\n**Context - Similar Claims**:\n{{ $json.context_claims }}\n\nScore each IMTT pillar (0.0-1.0):\n- INDEPENDENCE: Is this source independent from political/financial actors?\n- METHODOLOGY: Does content follow journalistic standards?\n- TRANSPARENCY: Is ownership/funding/authorship disclosed?\n- TRIANGULATION: Is information cross-checked against other sources?\n\nExtract 3-7 verifiable claims and detect any propaganda techniques.\n\nRespond with JSON:\n{\n  \"imtt_scores\": {\n    \"independence\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"methodology\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"transparency\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] },\n    \"triangulation\": { \"score\": 0.0-1.0, \"score_5\": 0-5, \"justification\": \"...\", \"signals\": [] }\n  },\n  \"total_score\": 0.0-1.0,\n  \"total_score_20\": 0-20,\n  \"credibility_tier\": \"authoritative|reliable|mixed|questionable|propaganda\",\n  \"tier_reasoning\": \"...\",\n  \"propaganda_techniques\": [{ \"technique\": \"...\", \"evidence\": \"...\", \"severity\": \"low|medium|high\" }],\n  \"claims\": [{ \"original_text\": \"...\", \"english_translation\": \"...\", \"language\": \"fa|ar|en\", \"claim_type\": \"concrete|attribution|causal|predictive|quantitative|narrative\", \"verifiability\": \"high|medium|low\", \"confidence\": 0.0-1.0, \"subject\": \"...\", \"requires_fact_check\": true|false }],\n  \"content_analysis\": { \"stance\": \"pro_regime|anti_regime|pro_western|anti_western|neutral|mixed\", \"stance_confidence\": 0.0-1.0, \"primary_topic\": \"...\", \"emotional_tone\": \"neutral|alarming|celebratory|critical|defensive\" },\n  \"overall_assessment\": \"...\",\n  \"confidence\": 0.0-1.0,\n  \"needs_escalation\": true|false,\n  \"escalation_reason\": \"...\"\n}"
+              "message": "You are an expert media analyst specializing in evaluating news sources and content using the IMTT (Information Manipulation Typology Tool) framework.\n\nYou analyze content in Farsi (Persian), Arabic, and English. You MUST:\n1. Preserve original language text when extracting claims\n2. Provide English translations for all non-English content\n3. Be culturally aware of Iranian/Middle Eastern media landscape\n4. Recognize state-affiliated vs independent media signals\n\nYour evaluation must be evidence-based and cite specific examples from the content.\n\nRespond ONLY with valid JSON. No markdown code blocks, no explanation outside JSON."
             }
           ]
-        },
-        "options": {
-          "temperature": 0.2,
-          "maxTokens": 4000,
-          "responseFormat": "json_object"
         }
       },
       "id": "gpt4o-imtt-analysis",
-      "name": "GPT-4o IMTT Analysis",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 1.8,
+      "name": "Azure OpenAI IMTT Analysis",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
       "position": [1570, 400],
-      "credentials": {
-        "openAiApi": {
-          "id": "azure-openai",
-          "name": "Azure OpenAI"
-        }
-      },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000
     },
     {
       "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 4000,
+          "timeout": 120000
+        }
+      },
+      "id": "azure-openai-chat-model",
+      "name": "Azure OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
+      "typeVersion": 1,
+      "position": [1650, 560],
+      "credentials": {
+        "azureOpenAiApi": {
+          "id": "uyCPQWMhgIMY3zC7",
+          "name": "Azure Open AI account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Parse and validate GPT-4o response\nconst content = $('Prepare Analysis Context').item.json;\nconst rawResponse = $json;\n\nlet analysis;\ntry {\n  if (typeof rawResponse.message?.content === 'string') {\n    analysis = JSON.parse(rawResponse.message.content);\n  } else if (typeof rawResponse.content === 'string') {\n    analysis = JSON.parse(rawResponse.content);\n  } else if (rawResponse.imtt_scores) {\n    analysis = rawResponse;\n  } else {\n    throw new Error('Unexpected response format');\n  }\n} catch (e) {\n  return {\n    content_id: content.content_id,\n    source_id: content.source_id,\n    parse_error: true,\n    error_message: e.message,\n    imtt_scores: {\n      independence: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      methodology: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      transparency: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      triangulation: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] }\n    },\n    total_score: 0.5,\n    credibility_tier: 'unverified',\n    propaganda_techniques: [],\n    claims: [],\n    confidence: 0.3,\n    needs_escalation: true,\n    escalation_reason: 'Parse error in GPT-4o response'\n  };\n}\n\nconst validateScore = (score, fallback = 0.5) => {\n  const num = parseFloat(score);\n  return isNaN(num) ? fallback : Math.max(0, Math.min(1, num));\n};\n\nconst imtt = analysis.imtt_scores || {};\nconst normalizedImtt = {\n  independence: {\n    score: validateScore(imtt.independence?.score),\n    score_5: Math.round(validateScore(imtt.independence?.score) * 5),\n    justification: imtt.independence?.justification || '',\n    signals: imtt.independence?.signals || []\n  },\n  methodology: {\n    score: validateScore(imtt.methodology?.score),\n    score_5: Math.round(validateScore(imtt.methodology?.score) * 5),\n    justification: imtt.methodology?.justification || '',\n    signals: imtt.methodology?.signals || []\n  },\n  transparency: {\n    score: validateScore(imtt.transparency?.score),\n    score_5: Math.round(validateScore(imtt.transparency?.score) * 5),\n    justification: imtt.transparency?.justification || '',\n    signals: imtt.transparency?.signals || []\n  },\n  triangulation: {\n    score: validateScore(imtt.triangulation?.score),\n    score_5: Math.round(validateScore(imtt.triangulation?.score) * 5),\n    justification: imtt.triangulation?.justification || '',\n    signals: imtt.triangulation?.signals || []\n  }\n};\n\nconst totalScore = (normalizedImtt.independence.score + normalizedImtt.methodology.score + normalizedImtt.transparency.score + normalizedImtt.triangulation.score) / 4;\nconst totalScore20 = normalizedImtt.independence.score_5 + normalizedImtt.methodology.score_5 + normalizedImtt.transparency.score_5 + normalizedImtt.triangulation.score_5;\n\nconst getTier = (score20) => {\n  if (score20 >= 18) return 'authoritative';\n  if (score20 >= 14) return 'reliable';\n  if (score20 >= 10) return 'mixed';\n  if (score20 >= 5) return 'questionable';\n  return 'propaganda';\n};\n\nconst mapTierToEnum = (tier) => {\n  const mapping = { 'authoritative': 'official', 'reliable': 'credible', 'mixed': 'unverified', 'questionable': 'partisan', 'propaganda': 'propaganda' };\n  return mapping[tier] || 'unverified';\n};\n\nconst credibilityTier = analysis.credibility_tier || getTier(totalScore20);\nconst claims = (analysis.claims || []).map((claim, idx) => ({\n  claim_index: idx,\n  original_text: claim.original_text || claim.english_translation || '',\n  english_translation: claim.english_translation || claim.original_text || '',\n  language: claim.language || content.language || 'en',\n  claim_type: claim.claim_type || 'narrative',\n  verifiability: claim.verifiability || 'medium',\n  confidence: validateScore(claim.confidence, 0.5),\n  subject: claim.subject || '',\n  requires_fact_check: claim.requires_fact_check || false\n}));\n\nconst propagandaTechniques = (analysis.propaganda_techniques || []).map(pt => ({\n  technique: pt.technique || 'unknown',\n  evidence: pt.evidence || '',\n  severity: pt.severity || 'low'\n}));\n\nconst propagandaRisk = propagandaTechniques.length === 0 ? 0 : Math.min(1, propagandaTechniques.reduce((sum, pt) => sum + ({ low: 0.1, medium: 0.25, high: 0.4 }[pt.severity] || 0.2), 0));\nconst confidence = validateScore(analysis.confidence, 0.5);\nconst needsEscalation = analysis.needs_escalation || confidence < 0.6 || propagandaRisk > 0.7;\n\nreturn {\n  content_id: content.content_id,\n  source_id: content.source_id,\n  url: content.url,\n  title: content.title,\n  language: content.language,\n  imtt_scores: normalizedImtt,\n  independence: normalizedImtt.independence.score,\n  methodology: normalizedImtt.methodology.score,\n  transparency: normalizedImtt.transparency.score,\n  triangulation: normalizedImtt.triangulation.score,\n  total_score: totalScore,\n  total_score_20: totalScore20,\n  overall_score: totalScore,\n  credibility_tier: credibilityTier,\n  credibility_tier_enum: mapTierToEnum(credibilityTier),\n  recommended_tier: mapTierToEnum(credibilityTier),\n  tier_reasoning: analysis.tier_reasoning || '',\n  content_analysis: analysis.content_analysis || {},\n  stance: analysis.content_analysis?.stance || 'neutral',\n  stance_confidence: validateScore(analysis.content_analysis?.stance_confidence, 0.5),\n  propaganda_techniques: propagandaTechniques,\n  propaganda_risk: propagandaRisk,\n  claims: claims,\n  claims_count: claims.length,\n  overall_assessment: analysis.overall_assessment || '',\n  confidence: confidence,\n  needs_escalation: needsEscalation,\n  escalation_reason: analysis.escalation_reason || (needsEscalation ? 'Low confidence or high propaganda risk' : null),\n  model_used: 'gpt-4o',\n  evaluated_by: 'agent1',\n  evaluation_timestamp: new Date().toISOString()\n};"
+        "jsCode": "// Parse and validate LangChain Basic LLM Chain response\nconst content = $('Prepare Analysis Context').item.json;\nconst rawResponse = $json;\n\nlet analysis;\ntry {\n  // LangChain Basic LLM Chain response format: { text: '...' } or direct JSON\n  if (typeof rawResponse.text === 'string') {\n    analysis = JSON.parse(rawResponse.text);\n  } else if (typeof rawResponse.response?.text === 'string') {\n    analysis = JSON.parse(rawResponse.response.text);\n  } else if (rawResponse.choices && rawResponse.choices[0]?.message?.content) {\n    // Fallback for raw OpenAI response format\n    analysis = JSON.parse(rawResponse.choices[0].message.content);\n  } else if (typeof rawResponse.message?.content === 'string') {\n    analysis = JSON.parse(rawResponse.message.content);\n  } else if (typeof rawResponse.content === 'string') {\n    analysis = JSON.parse(rawResponse.content);\n  } else if (rawResponse.imtt_scores) {\n    // Already parsed JSON\n    analysis = rawResponse;\n  } else {\n    throw new Error('Unexpected response format: ' + JSON.stringify(Object.keys(rawResponse)));\n  }\n} catch (e) {\n  return {\n    content_id: content.content_id,\n    source_id: content.source_id,\n    parse_error: true,\n    error_message: e.message,\n    raw_response: JSON.stringify(rawResponse).slice(0, 500),\n    imtt_scores: {\n      independence: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      methodology: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      transparency: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] },\n      triangulation: { score: 0.5, score_5: 3, justification: 'Parse error', signals: [] }\n    },\n    total_score: 0.5,\n    credibility_tier: 'unverified',\n    propaganda_techniques: [],\n    claims: [],\n    confidence: 0.3,\n    needs_escalation: true,\n    escalation_reason: 'Parse error in Azure OpenAI response: ' + e.message\n  };\n}\n\nconst validateScore = (score, fallback = 0.5) => {\n  const num = parseFloat(score);\n  return isNaN(num) ? fallback : Math.max(0, Math.min(1, num));\n};\n\nconst imtt = analysis.imtt_scores || {};\nconst normalizedImtt = {\n  independence: {\n    score: validateScore(imtt.independence?.score),\n    score_5: Math.round(validateScore(imtt.independence?.score) * 5),\n    justification: imtt.independence?.justification || '',\n    signals: imtt.independence?.signals || []\n  },\n  methodology: {\n    score: validateScore(imtt.methodology?.score),\n    score_5: Math.round(validateScore(imtt.methodology?.score) * 5),\n    justification: imtt.methodology?.justification || '',\n    signals: imtt.methodology?.signals || []\n  },\n  transparency: {\n    score: validateScore(imtt.transparency?.score),\n    score_5: Math.round(validateScore(imtt.transparency?.score) * 5),\n    justification: imtt.transparency?.justification || '',\n    signals: imtt.transparency?.signals || []\n  },\n  triangulation: {\n    score: validateScore(imtt.triangulation?.score),\n    score_5: Math.round(validateScore(imtt.triangulation?.score) * 5),\n    justification: imtt.triangulation?.justification || '',\n    signals: imtt.triangulation?.signals || []\n  }\n};\n\nconst totalScore = (normalizedImtt.independence.score + normalizedImtt.methodology.score + normalizedImtt.transparency.score + normalizedImtt.triangulation.score) / 4;\nconst totalScore20 = normalizedImtt.independence.score_5 + normalizedImtt.methodology.score_5 + normalizedImtt.transparency.score_5 + normalizedImtt.triangulation.score_5;\n\nconst getTier = (score20) => {\n  if (score20 >= 18) return 'authoritative';\n  if (score20 >= 14) return 'reliable';\n  if (score20 >= 10) return 'mixed';\n  if (score20 >= 5) return 'questionable';\n  return 'propaganda';\n};\n\nconst mapTierToEnum = (tier) => {\n  const mapping = { 'authoritative': 'official', 'reliable': 'credible', 'mixed': 'unverified', 'questionable': 'partisan', 'propaganda': 'propaganda' };\n  return mapping[tier] || 'unverified';\n};\n\n// Model info from LangChain response\nconst modelUsed = rawResponse.llmOutput?.tokenUsage?.model || 'gpt-4o';\n\nconst credibilityTier = analysis.credibility_tier || getTier(totalScore20);\nconst claims = (analysis.claims || []).map((claim, idx) => ({\n  claim_index: idx,\n  original_text: claim.original_text || claim.english_translation || '',\n  english_translation: claim.english_translation || claim.original_text || '',\n  language: claim.language || content.language || 'en',\n  claim_type: claim.claim_type || 'narrative',\n  verifiability: claim.verifiability || 'medium',\n  confidence: validateScore(claim.confidence, 0.5),\n  subject: claim.subject || '',\n  requires_fact_check: claim.requires_fact_check || false\n}));\n\nconst propagandaTechniques = (analysis.propaganda_techniques || []).map(pt => ({\n  technique: pt.technique || 'unknown',\n  evidence: pt.evidence || '',\n  severity: pt.severity || 'low'\n}));\n\nconst propagandaRisk = propagandaTechniques.length === 0 ? 0 : Math.min(1, propagandaTechniques.reduce((sum, pt) => sum + ({ low: 0.1, medium: 0.25, high: 0.4 }[pt.severity] || 0.2), 0));\nconst confidence = validateScore(analysis.confidence, 0.5);\nconst needsEscalation = analysis.needs_escalation || confidence < 0.6 || propagandaRisk > 0.7;\n\nreturn {\n  content_id: content.content_id,\n  source_id: content.source_id,\n  url: content.url,\n  title: content.title,\n  language: content.language,\n  imtt_scores: normalizedImtt,\n  independence: normalizedImtt.independence.score,\n  methodology: normalizedImtt.methodology.score,\n  transparency: normalizedImtt.transparency.score,\n  triangulation: normalizedImtt.triangulation.score,\n  total_score: totalScore,\n  total_score_20: totalScore20,\n  overall_score: totalScore,\n  credibility_tier: credibilityTier,\n  credibility_tier_enum: mapTierToEnum(credibilityTier),\n  recommended_tier: mapTierToEnum(credibilityTier),\n  tier_reasoning: analysis.tier_reasoning || '',\n  content_analysis: analysis.content_analysis || {},\n  stance: analysis.content_analysis?.stance || 'neutral',\n  stance_confidence: validateScore(analysis.content_analysis?.stance_confidence, 0.5),\n  propaganda_techniques: propagandaTechniques,\n  propaganda_risk: propagandaRisk,\n  claims: claims,\n  claims_count: claims.length,\n  overall_assessment: analysis.overall_assessment || '',\n  confidence: confidence,\n  needs_escalation: needsEscalation,\n  escalation_reason: analysis.escalation_reason || (needsEscalation ? 'Low confidence or high propaganda risk' : null),\n  model_used: modelUsed,\n  evaluated_by: 'agent1',\n  evaluation_timestamp: new Date().toISOString(),\n  usage: rawResponse.llmOutput?.tokenUsage || null\n};"
       },
       "id": "parse-validate",
       "name": "Parse & Validate Response",
@@ -420,6 +425,32 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [3330, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: 'no_content',\n  execution_id: $executionId,\n  message: 'No pending content found to analyze',\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-no-content",
+      "name": "Respond No Content",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [910, 550]
     }
   ],
   "connections": {
@@ -476,7 +507,13 @@
             "index": 0
           }
         ],
-        []
+        [
+          {
+            "node": "Respond No Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Process Each Content": {
@@ -517,14 +554,25 @@
       "main": [
         [
           {
-            "node": "GPT-4o IMTT Analysis",
+            "node": "Azure OpenAI IMTT Analysis",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "GPT-4o IMTT Analysis": {
+    "Azure OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Azure OpenAI IMTT Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Azure OpenAI IMTT Analysis": {
       "main": [
         [
           {

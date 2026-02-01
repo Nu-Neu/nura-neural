@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "WF-05: Public API Endpoints",
   "nodes": [
     {
@@ -37,7 +37,7 @@
         "options": {}
       },
       "id": "webhook-narrative-detail",
-      "name": "GET Narrative Detail",
+      "name": "Webhook - Narrative Detail",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [0, 600],
@@ -415,11 +415,11 @@
         "operation": "executeQuery",
         "query": "SELECT \n  n.narrative_id,\n  n.label,\n  n.label_fa,\n  n.label_ar,\n  n.description,\n  n.content_count,\n  n.claim_count,\n  n.source_count,\n  n.dominant_stance,\n  n.avg_propaganda_risk,\n  n.consensus_plausibility,\n  n.first_seen_at,\n  n.last_activity_at,\n  n.is_featured,\n  n.is_active,\n  -- Get claims with source info\n  COALESCE(\n    json_agg(\n      DISTINCT jsonb_build_object(\n        'claim_id', cl.claim_id,\n        'claim_text', cl.claim_text,\n        'claim_text_en', cl.claim_text_en,\n        'claim_type', cl.claim_type,\n        'confidence', cl.confidence,\n        'source_tier', s.credibility_tier,\n        'source_name', s.name,\n        'published_at', c.published_at,\n        'similarity_score', cn.similarity_score,\n        'is_core_claim', cn.is_core_claim\n      )\n    ) FILTER (WHERE cl.claim_id IS NOT NULL),\n    '[]'\n  ) AS claims,\n  -- Get timeline events\n  COALESCE(\n    json_agg(\n      DISTINCT jsonb_build_object(\n        'event_date', nt.event_date,\n        'key_event', nt.key_event,\n        'description', nt.description\n      )\n    ) FILTER (WHERE nt.timeline_id IS NOT NULL),\n    '[]'\n  ) AS timeline,\n  -- Get source distribution\n  COALESCE(\n    json_agg(\n      DISTINCT jsonb_build_object(\n        'source_id', s.source_id,\n        'source_name', s.name,\n        'credibility_tier', s.credibility_tier,\n        'country', s.country\n      )\n    ) FILTER (WHERE s.source_id IS NOT NULL),\n    '[]'\n  ) AS sources\nFROM narratives n\nLEFT JOIN claim_narratives cn ON n.narrative_id = cn.narrative_id\nLEFT JOIN claims cl ON cn.claim_id = cl.claim_id\nLEFT JOIN content c ON cl.content_id = c.content_id\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN narrative_timeline nt ON n.narrative_id = nt.narrative_id\nWHERE n.narrative_id = $1::uuid\nGROUP BY n.narrative_id;",
         "options": {
-          "queryReplacement": "={{ [$('GET Narrative Detail').item.json.params.id] }}"
+          "queryReplacement": "={{ [$('Webhook - Narrative Detail').item.json.params.id] }}"
         }
       },
       "id": "get-narrative-detail",
-      "name": "Get Narrative Detail",
+      "name": "Webhook - Narrative Detail",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [660, 700],
@@ -433,7 +433,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const results = $json;\nconst narrativeId = $('GET Narrative Detail').item.json.params?.id;\n\n// Handle array result from PostgreSQL\nconst narrative = Array.isArray(results) ? results[0] : results;\n\nif (!narrative || !narrative.narrative_id) {\n  return {\n    statusCode: 404,\n    body: {\n      error: 'Narrative not found',\n      narrative_id: narrativeId,\n      message: `No narrative found with ID: ${narrativeId}`\n    }\n  };\n}\n\n// Parse JSON aggregates\nlet claims = [];\nlet timeline = [];\nlet sources = [];\n\ntry {\n  claims = typeof narrative.claims === 'string' \n    ? JSON.parse(narrative.claims) \n    : (narrative.claims || []);\n  claims = claims.filter(c => c && c.claim_id);\n} catch (e) {\n  claims = [];\n}\n\ntry {\n  timeline = typeof narrative.timeline === 'string' \n    ? JSON.parse(narrative.timeline) \n    : (narrative.timeline || []);\n  timeline = timeline.filter(t => t && t.event_date);\n} catch (e) {\n  timeline = [];\n}\n\ntry {\n  sources = typeof narrative.sources === 'string' \n    ? JSON.parse(narrative.sources) \n    : (narrative.sources || []);\n  sources = sources.filter(s => s && s.source_id);\n} catch (e) {\n  sources = [];\n}\n\n// Sort claims by similarity score (core claims first)\nconst sortedClaims = claims.sort((a, b) => {\n  if (a.is_core_claim && !b.is_core_claim) return -1;\n  if (!a.is_core_claim && b.is_core_claim) return 1;\n  return (b.similarity_score || 0) - (a.similarity_score || 0);\n});\n\n// Sort timeline by date\nconst sortedTimeline = timeline.sort((a, b) => \n  new Date(a.event_date) - new Date(b.event_date)\n);\n\n// Calculate source tier distribution\nconst tierDistribution = sources.reduce((acc, s) => {\n  const tier = s.credibility_tier || 'unverified';\n  acc[tier] = (acc[tier] || 0) + 1;\n  return acc;\n}, {});\n\nreturn {\n  statusCode: 200,\n  body: {\n    narrative_id: narrative.narrative_id,\n    label: narrative.label,\n    label_fa: narrative.label_fa,\n    label_ar: narrative.label_ar,\n    description: narrative.description,\n    stats: {\n      content_count: parseInt(narrative.content_count) || 0,\n      claim_count: parseInt(narrative.claim_count) || 0,\n      source_count: parseInt(narrative.source_count) || 0\n    },\n    analysis: {\n      dominant_stance: narrative.dominant_stance,\n      avg_propaganda_risk: narrative.avg_propaganda_risk !== null \n        ? parseFloat(narrative.avg_propaganda_risk) \n        : null,\n      consensus_plausibility: narrative.consensus_plausibility\n    },\n    timeline: {\n      first_seen_at: narrative.first_seen_at,\n      last_activity_at: narrative.last_activity_at,\n      events: sortedTimeline\n    },\n    claims: sortedClaims.map(c => ({\n      claim_id: c.claim_id,\n      claim_text: c.claim_text,\n      claim_text_en: c.claim_text_en,\n      claim_type: c.claim_type,\n      confidence: c.confidence !== null ? parseFloat(c.confidence) : null,\n      source: {\n        name: c.source_name,\n        tier: c.source_tier\n      },\n      published_at: c.published_at,\n      similarity_score: c.similarity_score !== null ? parseFloat(c.similarity_score) : null,\n      is_core_claim: c.is_core_claim || false\n    })),\n    sources: {\n      list: sources.map(s => ({\n        source_id: s.source_id,\n        name: s.source_name,\n        tier: s.credibility_tier,\n        country: s.country\n      })),\n      tier_distribution: tierDistribution\n    },\n    is_featured: narrative.is_featured || false,\n    is_active: narrative.is_active || true\n  }\n};"
+        "jsCode": "const results = $json;\nconst narrativeId = $('Webhook - Narrative Detail').item.json.params?.id;\n\n// Handle array result from PostgreSQL\nconst narrative = Array.isArray(results) ? results[0] : results;\n\nif (!narrative || !narrative.narrative_id) {\n  return {\n    statusCode: 404,\n    body: {\n      error: 'Narrative not found',\n      narrative_id: narrativeId,\n      message: `No narrative found with ID: ${narrativeId}`\n    }\n  };\n}\n\n// Parse JSON aggregates\nlet claims = [];\nlet timeline = [];\nlet sources = [];\n\ntry {\n  claims = typeof narrative.claims === 'string' \n    ? JSON.parse(narrative.claims) \n    : (narrative.claims || []);\n  claims = claims.filter(c => c && c.claim_id);\n} catch (e) {\n  claims = [];\n}\n\ntry {\n  timeline = typeof narrative.timeline === 'string' \n    ? JSON.parse(narrative.timeline) \n    : (narrative.timeline || []);\n  timeline = timeline.filter(t => t && t.event_date);\n} catch (e) {\n  timeline = [];\n}\n\ntry {\n  sources = typeof narrative.sources === 'string' \n    ? JSON.parse(narrative.sources) \n    : (narrative.sources || []);\n  sources = sources.filter(s => s && s.source_id);\n} catch (e) {\n  sources = [];\n}\n\n// Sort claims by similarity score (core claims first)\nconst sortedClaims = claims.sort((a, b) => {\n  if (a.is_core_claim && !b.is_core_claim) return -1;\n  if (!a.is_core_claim && b.is_core_claim) return 1;\n  return (b.similarity_score || 0) - (a.similarity_score || 0);\n});\n\n// Sort timeline by date\nconst sortedTimeline = timeline.sort((a, b) => \n  new Date(a.event_date) - new Date(b.event_date)\n);\n\n// Calculate source tier distribution\nconst tierDistribution = sources.reduce((acc, s) => {\n  const tier = s.credibility_tier || 'unverified';\n  acc[tier] = (acc[tier] || 0) + 1;\n  return acc;\n}, {});\n\nreturn {\n  statusCode: 200,\n  body: {\n    narrative_id: narrative.narrative_id,\n    label: narrative.label,\n    label_fa: narrative.label_fa,\n    label_ar: narrative.label_ar,\n    description: narrative.description,\n    stats: {\n      content_count: parseInt(narrative.content_count) || 0,\n      claim_count: parseInt(narrative.claim_count) || 0,\n      source_count: parseInt(narrative.source_count) || 0\n    },\n    analysis: {\n      dominant_stance: narrative.dominant_stance,\n      avg_propaganda_risk: narrative.avg_propaganda_risk !== null \n        ? parseFloat(narrative.avg_propaganda_risk) \n        : null,\n      consensus_plausibility: narrative.consensus_plausibility\n    },\n    timeline: {\n      first_seen_at: narrative.first_seen_at,\n      last_activity_at: narrative.last_activity_at,\n      events: sortedTimeline\n    },\n    claims: sortedClaims.map(c => ({\n      claim_id: c.claim_id,\n      claim_text: c.claim_text,\n      claim_text_en: c.claim_text_en,\n      claim_type: c.claim_type,\n      confidence: c.confidence !== null ? parseFloat(c.confidence) : null,\n      source: {\n        name: c.source_name,\n        tier: c.source_tier\n      },\n      published_at: c.published_at,\n      similarity_score: c.similarity_score !== null ? parseFloat(c.similarity_score) : null,\n      is_core_claim: c.is_core_claim || false\n    })),\n    sources: {\n      list: sources.map(s => ({\n        source_id: s.source_id,\n        name: s.source_name,\n        tier: s.credibility_tier,\n        country: s.country\n      })),\n      tier_distribution: tierDistribution\n    },\n    is_featured: narrative.is_featured || false,\n    is_active: narrative.is_active || true\n  }\n};"
       },
       "id": "format-narrative-detail-response",
       "name": "Format Narrative Detail Response",
@@ -444,7 +444,7 @@
     {
       "parameters": {
         "operation": "set",
-        "key": "=narrative:{{ $('GET Narrative Detail').item.json.params.id }}",
+        "key": "=narrative:{{ $('Webhook - Narrative Detail').item.json.params.id }}",
         "value": "={{ JSON.stringify($json.body) }}",
         "expire": true,
         "ttl": 300
@@ -740,7 +740,7 @@
         ]
       ]
     },
-    "GET Narrative Detail": {
+    "Webhook - Narrative Detail": {
       "main": [
         [
           {
@@ -773,7 +773,7 @@
         ],
         [
           {
-            "node": "Get Narrative Detail",
+            "node": "Webhook - Narrative Detail",
             "type": "main",
             "index": 0
           }
@@ -791,7 +791,7 @@
         ]
       ]
     },
-    "Get Narrative Detail": {
+    "Webhook - Narrative Detail": {
       "main": [
         [
           {

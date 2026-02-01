@@ -1,0 +1,149 @@
+﻿{
+  "content_container": {
+    "sensitive": false,
+    "type": "string",
+    "value": "nura-content"
+  },
+  "deployment_summary": {
+    "sensitive": false,
+    "type": "string",
+    "value": "\r\n╔══════════════════════════════════════════════════════════════╗\r\n║              NURA NEURAL - DEPLOYMENT COMPLETE               ║\r\n╠══════════════════════════════════════════════════════════════╣\r\n║ AZURE AI SEARCH                                              ║\r\n║   Service:    nura-search\r\n║   Endpoint:   https://nura-search.search.windows.net\r\n║   SKU:        basic\r\n╠══════════════════════════════════════════════════════════════╣\r\n║ CONTAINER APPS                                               ║\r\n║   Miniflux:   https://nura-miniflux.proudbeach-e6523ab9.australiaeast.azurecontainerapps.io\r\n║   RSSHub:     nura-rsshub (internal)\r\n║   Redis:      nura-redis:6379 (internal)\r\n║   SMRY:       (commented - requires custom Docker build)     ║\r\n╠══════════════════════════════════════════════════════════════╣\r\n║ POSTGRESQL                                                   ║\r\n║   Host:       irdecode-prod-psql.postgres.database.azure.com\r\n║   Databases:  miniflux, nura\r\n╠══════════════════════════════════════════════════════════════╣\r\n║ BLOB STORAGE                                                 ║\r\n║   Account:    irdecodeprodst\r\n║   Containers: nura-content, nura-embeddings\r\n╠══════════════════════════════════════════════════════════════╣\r\n║ NEXT STEPS                                                   ║\r\n║   1. Apply database schema: psql -f database/schema.sql      ║\r\n║   2. Create AI Search indexes: ./create-search-indexes.ps1   ║\r\n║   3. Configure n8n credentials (see n8n_credential_config)   ║\r\n║   4. Import n8n workflows from workflows/*.json              ║\r\n║   5. Add RSS feeds to Miniflux                               ║\r\n║   6. Deploy SMRY: Build \u0026 push custom Docker image to ACR    ║\r\n╚══════════════════════════════════════════════════════════════╝\r\n\r\n"
+  },
+  "embeddings_container": {
+    "sensitive": false,
+    "type": "string",
+    "value": "nura-embeddings"
+  },
+  "key_vault_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "irdecode-prod-kv"
+  },
+  "key_vault_uri": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://irdecode-prod-kv.vault.azure.net/"
+  },
+  "miniflux_database": {
+    "sensitive": false,
+    "type": "string",
+    "value": "miniflux"
+  },
+  "miniflux_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://nura-miniflux.proudbeach-e6523ab9.australiaeast.azurecontainerapps.io"
+  },
+  "n8n_credential_config": {
+    "sensitive": false,
+    "type": [
+      "object",
+      {
+        "azure_ai_search": [
+          "object",
+          {
+            "endpoint": "string",
+            "note": "string"
+          }
+        ],
+        "miniflux": [
+          "object",
+          {
+            "note": "string",
+            "url": "string"
+          }
+        ],
+        "postgresql": [
+          "object",
+          {
+            "database": "string",
+            "host": "string",
+            "note": "string",
+            "port": "number",
+            "ssl": "string"
+          }
+        ],
+        "redis": [
+          "object",
+          {
+            "host": "string",
+            "port": "number",
+            "ssl": "bool"
+          }
+        ]
+      }
+    ],
+    "value": {
+      "azure_ai_search": {
+        "endpoint": "https://nura-search.search.windows.net",
+        "note": "Get API key from Key Vault secret: nura-search-api-key"
+      },
+      "miniflux": {
+        "note": "API key available in Miniflux settings after first login",
+        "url": "https://nura-miniflux.proudbeach-e6523ab9.australiaeast.azurecontainerapps.io"
+      },
+      "postgresql": {
+        "database": "nura",
+        "host": "irdecode-prod-psql.postgres.database.azure.com",
+        "note": "Get user/password from Key Vault or terraform.tfvars",
+        "port": 5432,
+        "ssl": "require"
+      },
+      "redis": {
+        "host": "nura-redis",
+        "port": 6379,
+        "ssl": false
+      }
+    }
+  },
+  "nura_database": {
+    "sensitive": false,
+    "type": "string",
+    "value": "nura"
+  },
+  "postgres_connection_string": {
+    "sensitive": false,
+    "type": "string",
+    "value": "postgresql://\u003cUSER\u003e:\u003cPASSWORD\u003e@irdecode-prod-psql.postgres.database.azure.com:5432/nura?sslmode=require"
+  },
+  "postgres_host": {
+    "sensitive": false,
+    "type": "string",
+    "value": "irdecode-prod-psql.postgres.database.azure.com"
+  },
+  "postgres_port": {
+    "sensitive": false,
+    "type": "number",
+    "value": 5432
+  },
+  "redis_internal_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "redis://nura-redis:6379"
+  },
+  "rsshub_internal_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "http://nura-rsshub"
+  },
+  "search_admin_key": {
+    "sensitive": true,
+    "type": "string",
+    "value": "vesXHf4KllVcDIHItVvbvgu0IbllKPl710tJDWcOGzAzSeAYyT8a"
+  },
+  "search_endpoint": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://nura-search.search.windows.net"
+  },
+  "search_service_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "nura-search"
+  },
+  "storage_account_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "irdecodeprodst"
+  }
+}

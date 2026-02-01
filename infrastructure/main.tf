@@ -194,50 +194,45 @@ resource "azurerm_container_app" "miniflux" {
   tags = var.tags
 }
 
-# SMRY Text Extractor Container App
-resource "azurerm_container_app" "smry" {
-  name                         = "${var.project_name}-smry"
-  container_app_environment_id = data.azurerm_container_app_environment.existing.id
-  resource_group_name          = data.azurerm_resource_group.existing.name
-  revision_mode                = "Single"
-
-  template {
-    container {
-      name   = "smry"
-      image  = "${var.existing_acr_name}.azurecr.io/nura-smry:latest"
-      cpu    = 0.25
-      memory = "0.5Gi"
-
-      env {
-        name  = "PORT"
-        value = "3000"
-      }
-    }
-    min_replicas = 1
-    max_replicas = 2
-  }
-
-  ingress {
-    external_enabled = false
-    target_port      = 3000
-    transport        = "http"
-    traffic_weight {
-      percentage      = 100
-      latest_revision = true
-    }
-  }
-
-  registry {
-    server   = "${var.existing_acr_name}.azurecr.io"
-    identity = "system"
-  }
-
-  identity {
-    type = "SystemAssigned"
-  }
-
-  tags = var.tags
-}
+# SMRY Text Extractor Container App (COMMENTED - requires custom Docker build or public image)
+# resource "azurerm_container_app" "smry" {
+#   name                         = "${var.project_name}-smry"
+#   container_app_environment_id = data.azurerm_container_app_environment.existing.id
+#   resource_group_name          = data.azurerm_resource_group.existing.name
+#   revision_mode                = "Single"
+#
+#   template {
+#     container {
+#       name   = "smry"
+#       image  = "docker.io/mrmps/smry:latest"
+#       cpu    = 0.25
+#       memory = "0.5Gi"
+#
+#       env {
+#         name  = "PORT"
+#         value = "3000"
+#       }
+#     }
+#     min_replicas = 1
+#     max_replicas = 2
+#   }
+#
+#   ingress {
+#     external_enabled = false
+#     target_port      = 3000
+#     transport        = "http"
+#     traffic_weight {
+#       percentage      = 100
+#       latest_revision = true
+#     }
+#   }
+#
+#   identity {
+#     type = "SystemAssigned"
+#   }
+#
+#   tags = var.tags
+# }
 
 # ===========================================
 # PostgreSQL Databases (in existing server)

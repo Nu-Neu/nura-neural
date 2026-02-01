@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Nura Neural - Iran News Feeds</title>
+    <dateCreated>2026-02-01</dateCreated>
+    <ownerName>Nura Neural</ownerName>
+  </head>
+  <body>
+    <!-- ==================== WESTERN MEDIA ==================== -->
+    <outline text="Western Media" title="Western Media">
+      <!-- BBC -->
+      <outline type="rss" text="BBC Persian" title="BBC Persian" 
+               xmlUrl="https://feeds.bbci.co.uk/persian/rss.xml"
+               htmlUrl="https://www.bbc.com/persian"/>
+      <outline type="rss" text="BBC News - Middle East" title="BBC News - Middle East"
+               xmlUrl="https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"
+               htmlUrl="https://www.bbc.com/news/world/middle_east"/>
+      
+      <!-- Voice of America -->
+      <outline type="rss" text="VOA Persian" title="VOA Persian"
+               xmlUrl="https://www.voapersian.com/api/ziqpetqoqimi"
+               htmlUrl="https://www.voapersian.com"/>
+      <outline type="rss" text="VOA Persian - Iran" title="VOA Persian - Iran"
+               xmlUrl="https://www.voapersian.com/api/zmiqpetq_qimi"
+               htmlUrl="https://www.voapersian.com/iran"/>
+      
+      <!-- Radio Free Europe / Radio Farda -->
+      <outline type="rss" text="Radio Farda" title="Radio Farda"
+               xmlUrl="https://www.radiofarda.com/api/zkmqpemtiqmv"
+               htmlUrl="https://www.radiofarda.com"/>
+      
+      <!-- Deutsche Welle -->
+      <outline type="rss" text="DW Persian" title="DW Persian"
+               xmlUrl="https://rss.dw.com/xml/rss-fa-all"
+               htmlUrl="https://www.dw.com/fa"/>
+      
+      <!-- France 24 -->
+      <outline type="rss" text="France 24 Persian" title="France 24 Persian"
+               xmlUrl="https://www.france24.com/fa/rss"
+               htmlUrl="https://www.france24.com/fa"/>
+      
+      <!-- Reuters -->
+      <outline type="rss" text="Reuters - Iran" title="Reuters - Iran"
+               xmlUrl="https://www.reuters.com/places/iran/feed"
+               htmlUrl="https://www.reuters.com/places/iran"/>
+      
+      <!-- Al Jazeera -->
+      <outline type="rss" text="Al Jazeera - Middle East" title="Al Jazeera - Middle East"
+               xmlUrl="https://www.aljazeera.com/xml/rss/all.xml"
+               htmlUrl="https://www.aljazeera.com/middle-east"/>
+      
+      <!-- The Guardian -->
+      <outline type="rss" text="The Guardian - Iran" title="The Guardian - Iran"
+               xmlUrl="https://www.theguardian.com/world/iran/rss"
+               htmlUrl="https://www.theguardian.com/world/iran"/>
+      
+      <!-- New York Times -->
+      <outline type="rss" text="NYT - Middle East" title="NYT - Middle East"
+               xmlUrl="https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml"
+               htmlUrl="https://www.nytimes.com/section/world/middleeast"/>
+      
+      <!-- Washington Post -->
+      <outline type="rss" text="WaPo - Middle East" title="WaPo - Middle East"
+               xmlUrl="https://feeds.washingtonpost.com/rss/world/middle-east"
+               htmlUrl="https://www.washingtonpost.com/world/middle-east"/>
+      
+      <!-- AP News -->
+      <outline type="rss" text="AP - Middle East" title="AP - Middle East"
+               xmlUrl="https://rsshub.app/apnews/topics/middle-east"
+               htmlUrl="https://apnews.com/hub/middle-east"/>
+    </outline>
+
+    <!-- ==================== REGIME MEDIA ==================== -->
+    <outline text="Regime Media" title="Regime Media">
+      <!-- Note: Many regime sources don't have RSS. Using RSSHub where possible -->
+      
+      <!-- IRNA - Islamic Republic News Agency -->
+      <outline type="rss" text="IRNA (via RSSHub)" title="IRNA"
+               xmlUrl="https://rsshub.app/irna/news"
+               htmlUrl="https://www.irna.ir"/>
+      <outline type="rss" text="IRNA English" title="IRNA English"
+               xmlUrl="https://rsshub.app/irna/en"
+               htmlUrl="https://en.irna.ir"/>
+      
+      <!-- Fars News Agency -->
+      <outline type="rss" text="Fars News (via RSSHub)" title="Fars News"
+               xmlUrl="https://rsshub.app/farsnews/news"
+               htmlUrl="https://www.farsnews.ir"/>
+      <outline type="rss" text="Fars News English" title="Fars News English"
+               xmlUrl="https://rsshub.app/farsnews/en"
+               htmlUrl="https://www.farsnews.ir/en"/>
+      
+      <!-- Tasnim News Agency -->
+      <outline type="rss" text="Tasnim News (via RSSHub)" title="Tasnim News"
+               xmlUrl="https://rsshub.app/tasnimnews/news"
+               htmlUrl="https://www.tasnimnews.com"/>
+      <outline type="rss" text="Tasnim English" title="Tasnim English"
+               xmlUrl="https://rsshub.app/tasnimnews/en"
+               htmlUrl="https://www.tasnimnews.com/en"/>
+      
+      <!-- Mehr News Agency -->
+      <outline type="rss" text="Mehr News (via RSSHub)" title="Mehr News"
+               xmlUrl="https://rsshub.app/mehrnews/news"
+               htmlUrl="https://www.mehrnews.com"/>
+      
+      <!-- Press TV (English) -->
+      <outline type="rss" text="Press TV" title="Press TV"
+               xmlUrl="https://rsshub.app/presstv/news"
+               htmlUrl="https://www.presstv.ir"/>
+      
+      <!-- ISNA - Iranian Students News Agency -->
+      <outline type="rss" text="ISNA (via RSSHub)" title="ISNA"
+               xmlUrl="https://rsshub.app/isna/news"
+               htmlUrl="https://www.isna.ir"/>
+      
+      <!-- Kayhan -->
+      <outline type="rss" text="Kayhan (via RSSHub)" title="Kayhan"
+               xmlUrl="https://rsshub.app/kayhan/news"
+               htmlUrl="https://kayhan.ir"/>
+      
+      <!-- Tehran Times -->
+      <outline type="rss" text="Tehran Times" title="Tehran Times"
+               xmlUrl="https://rsshub.app/tehrantimes/news"
+               htmlUrl="https://www.tehrantimes.com"/>
+    </outline>
+
+    <!-- ==================== OPPOSITION & INDEPENDENT ==================== -->
+    <outline text="Opposition" title="Opposition &amp; Independent">
+      <!-- Iran International -->
+      <outline type="rss" text="Iran International" title="Iran International"
+               xmlUrl="https://rsshub.app/iranintl/news"
+               htmlUrl="https://www.iranintl.com"/>
+      <outline type="rss" text="Iran International English" title="Iran International English"
+               xmlUrl="https://rsshub.app/iranintl/en"
+               htmlUrl="https://www.iranintl.com/en"/>
+      
+      <!-- Manoto -->
+      <outline type="rss" text="Manoto News" title="Manoto News"
+               xmlUrl="https://rsshub.app/manototv/news"
+               htmlUrl="https://www.manototv.com"/>
+      
+      <!-- Iran Wire -->
+      <outline type="rss" text="IranWire" title="IranWire"
+               xmlUrl="https://rsshub.app/iranwire/news"
+               htmlUrl="https://iranwire.com"/>
+      <outline type="rss" text="IranWire English" title="IranWire English"
+               xmlUrl="https://rsshub.app/iranwire/en"
+               htmlUrl="https://iranwire.com/en"/>
+      
+      <!-- Rooz Online -->
+      <outline type="rss" text="Rooz Online" title="Rooz Online"
+               xmlUrl="https://rsshub.app/roozonline/news"
+               htmlUrl="https://www.roozonline.com"/>
+      
+      <!-- Zamaneh Media -->
+      <outline type="rss" text="Zamaneh Media" title="Zamaneh Media"
+               xmlUrl="https://rsshub.app/zamanehmedia/news"
+               htmlUrl="https://www.zamanehmedia.com"/>
+      
+      <!-- Kayhan London -->
+      <outline type="rss" text="Kayhan London" title="Kayhan London"
+               xmlUrl="https://rsshub.app/kayhanlondon/news"
+               htmlUrl="https://kayhan.london"/>
+    </outline>
+
+    <!-- ==================== THINK TANKS & ANALYSIS ==================== -->
+    <outline text="Think Tanks" title="Think Tanks &amp; Analysis">
+      <!-- Atlantic Council - Iran -->
+      <outline type="rss" text="Atlantic Council - Iran" title="Atlantic Council - Iran"
+               xmlUrl="https://www.atlanticcouncil.org/region/middle-east/iran/feed/"
+               htmlUrl="https://www.atlanticcouncil.org/region/middle-east/iran"/>
+      
+      <!-- Brookings - Iran -->
+      <outline type="rss" text="Brookings - Iran" title="Brookings - Iran"
+               xmlUrl="https://www.brookings.edu/topic/iran/feed/"
+               htmlUrl="https://www.brookings.edu/topic/iran"/>
+      
+      <!-- CSIS - Middle East -->
+      <outline type="rss" text="CSIS - Middle East" title="CSIS - Middle East"
+               xmlUrl="https://www.csis.org/regions/middle-east/feed"
+               htmlUrl="https://www.csis.org/regions/middle-east"/>
+      
+      <!-- Middle East Institute -->
+      <outline type="rss" text="MEI - Iran" title="Middle East Institute - Iran"
+               xmlUrl="https://www.mei.edu/topics/iran/rss.xml"
+               htmlUrl="https://www.mei.edu/topics/iran"/>
+      
+      <!-- Carnegie - Middle East -->
+      <outline type="rss" text="Carnegie - Middle East" title="Carnegie - Middle East"
+               xmlUrl="https://carnegieendowment.org/regions/middle-east/feed"
+               htmlUrl="https://carnegieendowment.org/regions/middle-east"/>
+      
+      <!-- RAND - Middle East -->
+      <outline type="rss" text="RAND - Middle East" title="RAND - Middle East"
+               xmlUrl="https://www.rand.org/topics/middle-east.xml"
+               htmlUrl="https://www.rand.org/topics/middle-east.html"/>
+      
+      <!-- Al-Monitor -->
+      <outline type="rss" text="Al-Monitor - Iran" title="Al-Monitor - Iran"
+               xmlUrl="https://www.al-monitor.com/rss/iran"
+               htmlUrl="https://www.al-monitor.com/iran"/>
+    </outline>
+
+    <!-- ==================== HUMAN RIGHTS ==================== -->
+    <outline text="Human Rights" title="Human Rights Organizations">
+      <!-- Human Rights Watch -->
+      <outline type="rss" text="HRW - Iran" title="Human Rights Watch - Iran"
+               xmlUrl="https://www.hrw.org/rss/country/iran"
+               htmlUrl="https://www.hrw.org/middle-east/north-africa/iran"/>
+      
+      <!-- Amnesty International -->
+      <outline type="rss" text="Amnesty - Iran" title="Amnesty International - Iran"
+               xmlUrl="https://www.amnesty.org/en/location/middle-east-and-north-africa/iran/feed/"
+               htmlUrl="https://www.amnesty.org/en/location/middle-east-and-north-africa/iran"/>
+      
+      <!-- Iran Human Rights -->
+      <outline type="rss" text="Iran Human Rights" title="Iran Human Rights"
+               xmlUrl="https://rsshub.app/iranhr/news"
+               htmlUrl="https://iranhr.net"/>
+      
+      <!-- Center for Human Rights in Iran -->
+      <outline type="rss" text="CHRI" title="Center for Human Rights in Iran"
+               xmlUrl="https://iranhumanrights.org/feed/"
+               htmlUrl="https://iranhumanrights.org"/>
+    </outline>
+
+    <!-- ==================== SOCIAL MEDIA AGGREGATORS ==================== -->
+    <outline text="Social Media" title="Social Media Aggregators (via RSSHub)">
+      <!-- Twitter/X accounts via RSSHub - requires RSSHub instance -->
+      <outline type="rss" text="Twitter - Iran News Aggregated" title="Twitter Iran News"
+               xmlUrl="https://rsshub.app/twitter/list/iran-news"
+               htmlUrl="https://twitter.com"/>
+      
+      <!-- Telegram channels via RSSHub -->
+      <outline type="rss" text="Telegram - Iran Updates" title="Telegram Iran"
+               xmlUrl="https://rsshub.app/telegram/channel/iran_updates"
+               htmlUrl="https://t.me/iran_updates"/>
+    </outline>
+  </body>
+</opml>

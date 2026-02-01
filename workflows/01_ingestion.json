@@ -64,7 +64,9 @@
           "id": "miniflux-auth",
           "name": "Miniflux API"
         }
-      }
+      },
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -94,7 +96,9 @@
     {
       "parameters": {
         "batchSize": 10,
-        "options": {}
+        "options": {
+          "reset": false
+        }
       },
       "id": "batch-items",
       "name": "Batch Items",
@@ -126,7 +130,8 @@
           "timeout": 60000,
           "response": {
             "response": {
-              "fullResponse": false
+              "fullResponse": false,
+              "responseFormat": "text"
             }
           }
         }
@@ -142,7 +147,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Language detection based on character analysis\nconst item = $('Process Each Entry').item.json;\nconst smryResult = $json;\nconst text = smryResult.text || smryResult.content || item.content || '';\nconst title = item.title || '';\n\n// Persian/Farsi detection (Unicode range: 0600-06FF + Persian-specific)\nconst persianRegex = /[\\u0600-\\u06FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]/g;\nconst persianMatches = (text.match(persianRegex) || []).length;\n\n// Arabic-specific characters (not shared with Persian)\nconst arabicOnlyRegex = /[\\u0621\\u0623\\u0624\\u0625\\u0626]/g;\nconst arabicMatches = (text.match(arabicOnlyRegex) || []).length;\n\n// Hebrew detection\nconst hebrewRegex = /[\\u0590-\\u05FF]/g;\nconst hebrewMatches = (text.match(hebrewRegex) || []).length;\n\n// Latin characters\nconst latinRegex = /[a-zA-Z]/g;\nconst latinMatches = (text.match(latinRegex) || []).length;\n\n// Determine primary language\nlet language = 'en';\nlet detectedLanguage = 'en';\nlet textDirection = 'ltr';\n\nconst totalChars = text.length || 1;\nconst persianRatio = persianMatches / totalChars;\nconst arabicRatio = arabicMatches / totalChars;\nconst hebrewRatio = hebrewMatches / totalChars;\n\nif (persianRatio > 0.1 && persianRatio > arabicRatio) {\n  language = 'fa';\n  detectedLanguage = 'fa-IR';\n  textDirection = 'rtl';\n} else if (arabicRatio > 0.1 || (persianRatio > 0.05 && arabicMatches > persianMatches * 0.3)) {\n  language = 'ar';\n  detectedLanguage = 'ar';\n  textDirection = 'rtl';\n} else if (hebrewRatio > 0.1) {\n  language = 'he';\n  detectedLanguage = 'he';\n  textDirection = 'rtl';\n}\n\nreturn {\n  ...item,\n  content: text,\n  smry_text: smryResult.text || null,\n  smry_success: !!smryResult.text,\n  language: language,\n  detected_language: detectedLanguage,\n  text_direction: textDirection,\n  word_count: text.split(/\\s+/).filter(w => w.length > 0).length\n};"
+        "jsCode": "// Language detection based on character analysis (SMRY bypassed)\nconst item = $json;\nconst text = item.content || '';\nconst title = item.title || '';\n\n// Persian/Farsi detection (Unicode range: 0600-06FF + Persian-specific)\nconst persianRegex = /[\\u0600-\\u06FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]/g;\nconst persianMatches = (text.match(persianRegex) || []).length;\n\n// Arabic-specific characters (not shared with Persian)\nconst arabicOnlyRegex = /[\\u0621\\u0623\\u0624\\u0625\\u0626]/g;\nconst arabicMatches = (text.match(arabicOnlyRegex) || []).length;\n\n// Hebrew detection\nconst hebrewRegex = /[\\u0590-\\u05FF]/g;\nconst hebrewMatches = (text.match(hebrewRegex) || []).length;\n\n// Latin characters\nconst latinRegex = /[a-zA-Z]/g;\nconst latinMatches = (text.match(latinRegex) || []).length;\n\n// Determine primary language\nlet language = 'en';\nlet detectedLanguage = 'en';\nlet textDirection = 'ltr';\n\nconst totalChars = text.length || 1;\nconst persianRatio = persianMatches / totalChars;\nconst arabicRatio = arabicMatches / totalChars;\nconst hebrewRatio = hebrewMatches / totalChars;\n\nif (persianRatio > 0.1 && persianRatio > arabicRatio) {\n  language = 'fa';\n  detectedLanguage = 'fa-IR';\n  textDirection = 'rtl';\n} else if (arabicRatio > 0.1 || (persianRatio > 0.05 && arabicMatches > persianMatches * 0.3)) {\n  language = 'ar';\n  detectedLanguage = 'ar';\n  textDirection = 'rtl';\n} else if (hebrewRatio > 0.1) {\n  language = 'he';\n  detectedLanguage = 'he';\n  textDirection = 'rtl';\n}\n\nreturn {\n  json: {\n    ...item,\n    content: text,\n    smry_text: null,\n    smry_success: false,\n    language: language,\n    detected_language: detectedLanguage,\n    text_direction: textDirection,\n    word_count: text.split(/\\s+/).filter(w => w.length > 0).length\n  }\n};"
       },
       "id": "detect-language",
       "name": "Detect Language",
@@ -153,7 +158,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const crypto = require('crypto');\n\nconst item = $json;\nconst url = item.url || '';\nconst content = item.content || '';\n\n// URL-based hash for deduplication\nconst urlHash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 16);\n\n// Content-based hash for detecting same content at different URLs\nconst contentNormalized = content.toLowerCase().replace(/\\s+/g, ' ').trim().slice(0, 1000);\nconst contentHash = crypto.createHash('sha256').update(contentNormalized).digest('hex').slice(0, 16);\n\nreturn {\n  ...item,\n  url_hash: urlHash,\n  content_hash: contentHash,\n  external_id: urlHash\n};"
+        "jsCode": "// DJB2 hash function (no crypto module needed)\nfunction djb2Hash(str) {\n  let hash = 5381;\n  for (let i = 0; i < str.length; i++) {\n    hash = ((hash << 5) + hash) + str.charCodeAt(i);\n    hash = hash & 0xFFFFFFFF;\n  }\n  return Math.abs(hash).toString(16).padStart(8, '0');\n}\n\n// FNV-1a hash for second hash\nfunction fnv1aHash(str) {\n  let hash = 2166136261;\n  for (let i = 0; i < str.length; i++) {\n    hash ^= str.charCodeAt(i);\n    hash = (hash * 16777619) & 0xFFFFFFFF;\n  }\n  return Math.abs(hash).toString(16).padStart(8, '0');\n}\n\nconst item = $json;\nconst url = item.url || '';\nconst content = item.content || '';\n\n// URL-based hash for deduplication (combine two hashes for 16 chars)\nconst urlHash = djb2Hash(url) + fnv1aHash(url);\n\n// Content-based hash\nconst contentNormalized = content.toLowerCase().replace(/\\s+/g, ' ').trim().slice(0, 1000);\nconst contentHash = djb2Hash(contentNormalized) + fnv1aHash(contentNormalized);\n\nreturn {\n  json: {\n    ...item,\n    url_hash: urlHash,\n    content_hash: contentHash,\n    external_id: urlHash\n  }\n};"
       },
       "id": "generate-hash",
       "name": "Generate Hash",
@@ -187,10 +192,10 @@
           "combinator": "and",
           "conditions": [
             {
-              "leftValue": "={{ $json.length }}",
-              "rightValue": 0,
+              "leftValue": "={{ $json.content_id === undefined }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
+                "type": "boolean",
                 "operation": "equals"
               }
             }
@@ -231,7 +236,14 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ entry_ids: [$('Process Each Entry').item.json.id], status: 'read' }) }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth"
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "mark-as-read",
       "name": "Mark as Read",
@@ -291,7 +303,14 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ entry_ids: [$('Process Each Entry').item.json.id], status: 'read' }) }}",
         "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth"
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "mark-duplicate-as-read",
       "name": "Mark Duplicate as Read",
@@ -315,8 +334,8 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Prepare entry data from Miniflux response\nconst entries = $('Miniflux Get Unread').item.json.entries || [];\nreturn entries.map(entry => ({ json: entry }));"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Prepare entry data from Miniflux response - split entries array into individual items\nconst entries = $input.first().json.entries || [];\nreturn entries.map(entry => ({ json: entry }));"
       },
       "id": "prepare-entries",
       "name": "Prepare Entries",
@@ -402,7 +421,7 @@
       "main": [
         [
           {
-            "node": "Batch Items",
+            "node": "Process Each Entry",
             "type": "main",
             "index": 0
           }
@@ -411,20 +430,22 @@
     },
     "Batch Items": {
       "main": [
-        [
-          {
-            "node": "Process Each Entry",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [],
+        []
       ]
     },
     "Process Each Entry": {
       "main": [
         [
           {
-            "node": "SMRY Extract Text",
+            "node": "Log Ingestion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Detect Language",
             "type": "main",
             "index": 0
           }
@@ -434,11 +455,6 @@
     "SMRY Extract Text": {
       "main": [
         [
-          {
-            "node": "Detect Language",
-            "type": "main",
-            "index": 0
-          }
         ]
       ]
     },
@@ -519,11 +535,16 @@
       "main": [
         [
           {
-            "node": "Log Ingestion",
+            "node": "Process Each Entry",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Log Ingestion": {
+      "main": [
+        []
       ]
     },
     "Mark Duplicate as Read": {
