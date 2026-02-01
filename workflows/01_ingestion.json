@@ -1,0 +1,563 @@
+{
+  "name": "01 - Content Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://nura-miniflux/v1/entries",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "unread"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "order",
+              "value": "published_at"
+            },
+            {
+              "name": "direction",
+              "value": "desc"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "miniflux-get-unread",
+      "name": "Miniflux Get Unread",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "miniflux-auth",
+          "name": "Miniflux API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.entries?.length || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "has-items",
+      "name": "Has Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "batch-items",
+      "name": "Batch Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "process-each-entry",
+      "name": "Process Each Entry",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://nura-smry:3000/extract",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "smry-extract",
+      "name": "SMRY Extract Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 300],
+      "onError": "continueRegularOutput",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Language detection based on character analysis\nconst item = $('Process Each Entry').item.json;\nconst smryResult = $json;\nconst text = smryResult.text || smryResult.content || item.content || '';\nconst title = item.title || '';\n\n// Persian/Farsi detection (Unicode range: 0600-06FF + Persian-specific)\nconst persianRegex = /[\\u0600-\\u06FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]/g;\nconst persianMatches = (text.match(persianRegex) || []).length;\n\n// Arabic-specific characters (not shared with Persian)\nconst arabicOnlyRegex = /[\\u0621\\u0623\\u0624\\u0625\\u0626]/g;\nconst arabicMatches = (text.match(arabicOnlyRegex) || []).length;\n\n// Hebrew detection\nconst hebrewRegex = /[\\u0590-\\u05FF]/g;\nconst hebrewMatches = (text.match(hebrewRegex) || []).length;\n\n// Latin characters\nconst latinRegex = /[a-zA-Z]/g;\nconst latinMatches = (text.match(latinRegex) || []).length;\n\n// Determine primary language\nlet language = 'en';\nlet detectedLanguage = 'en';\nlet textDirection = 'ltr';\n\nconst totalChars = text.length || 1;\nconst persianRatio = persianMatches / totalChars;\nconst arabicRatio = arabicMatches / totalChars;\nconst hebrewRatio = hebrewMatches / totalChars;\n\nif (persianRatio > 0.1 && persianRatio > arabicRatio) {\n  language = 'fa';\n  detectedLanguage = 'fa-IR';\n  textDirection = 'rtl';\n} else if (arabicRatio > 0.1 || (persianRatio > 0.05 && arabicMatches > persianMatches * 0.3)) {\n  language = 'ar';\n  detectedLanguage = 'ar';\n  textDirection = 'rtl';\n} else if (hebrewRatio > 0.1) {\n  language = 'he';\n  detectedLanguage = 'he';\n  textDirection = 'rtl';\n}\n\nreturn {\n  ...item,\n  content: text,\n  smry_text: smryResult.text || null,\n  smry_success: !!smryResult.text,\n  language: language,\n  detected_language: detectedLanguage,\n  text_direction: textDirection,\n  word_count: text.split(/\\s+/).filter(w => w.length > 0).length\n};"
+      },
+      "id": "detect-language",
+      "name": "Detect Language",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const crypto = require('crypto');\n\nconst item = $json;\nconst url = item.url || '';\nconst content = item.content || '';\n\n// URL-based hash for deduplication\nconst urlHash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 16);\n\n// Content-based hash for detecting same content at different URLs\nconst contentNormalized = content.toLowerCase().replace(/\\s+/g, ' ').trim().slice(0, 1000);\nconst contentHash = crypto.createHash('sha256').update(contentNormalized).digest('hex').slice(0, 16);\n\nreturn {\n  ...item,\n  url_hash: urlHash,\n  content_hash: contentHash,\n  external_id: urlHash\n};"
+      },
+      "id": "generate-hash",
+      "name": "Generate Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1790, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT content_id, url, is_duplicate FROM content WHERE external_id = $1 OR url = $2 LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.external_id, $json.url] }}"
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2010, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "is-new",
+      "name": "Is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2230, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO content (\n  source_id,\n  content_type,\n  external_id,\n  url,\n  title,\n  content_text,\n  language,\n  detected_language,\n  text_direction,\n  author_name,\n  published_at,\n  word_count,\n  ingest_status,\n  analysis_status,\n  ingested_at\n) VALUES (\n  (SELECT source_id FROM sources WHERE identifier LIKE '%' || $1 || '%' LIMIT 1),\n  'article',\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7,\n  $8,\n  $9,\n  $10,\n  $11,\n  'completed',\n  'pending',\n  NOW()\n) RETURNING content_id",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Process Each Entry').item.json.feed?.site_url?.replace(/^https?:\\/\\//, '').replace(/\\/.*/, '') || '',\n  $('Generate Hash').item.json.external_id,\n  $('Generate Hash').item.json.url,\n  $('Generate Hash').item.json.title || '',\n  $('Generate Hash').item.json.content || '',\n  $('Detect Language').item.json.language,\n  $('Detect Language').item.json.detected_language,\n  $('Detect Language').item.json.text_direction,\n  $('Process Each Entry').item.json.author || null,\n  $('Process Each Entry').item.json.published_at || null,\n  $('Detect Language').item.json.word_count || 0\n] }}"
+        }
+      },
+      "id": "insert-content",
+      "name": "Insert Content",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2450, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://nura-miniflux/v1/entries",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ entry_ids: [$('Process Each Entry').item.json.id], status: 'read' }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "mark-as-read",
+      "name": "Mark as Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2670, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "miniflux-auth",
+          "name": "Miniflux API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://irdecode-prod-n8n/webhook/agent-source",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content_id: $json[0]?.content_id || $json.content_id }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "trigger-wf02",
+      "name": "Trigger Agent 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2890, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ingestion_log (\n  source_id,\n  run_type,\n  started_at,\n  completed_at,\n  duration_ms,\n  items_fetched,\n  items_new,\n  items_duplicate,\n  status,\n  workflow_execution_id\n) VALUES (\n  NULL,\n  'rss_poll',\n  $1,\n  NOW(),\n  $2,\n  $3,\n  $4,\n  $5,\n  'completed',\n  $6\n)",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Every 15 Minutes').item.json.timestamp || new Date().toISOString(),\n  Date.now() - new Date($('Every 15 Minutes').item.json.timestamp || Date.now()).getTime(),\n  $('Miniflux Get Unread').item.json.entries?.length || 0,\n  $itemIndex + 1,\n  0,\n  $executionId\n] }}"
+        }
+      },
+      "id": "log-ingestion",
+      "name": "Log Ingestion",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3110, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://nura-miniflux/v1/entries",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ entry_ids: [$('Process Each Entry').item.json.id], status: 'read' }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "mark-duplicate-as-read",
+      "name": "Mark Duplicate as Read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2450, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "miniflux-auth",
+          "name": "Miniflux API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-items",
+      "name": "No Items",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [910, 500]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prepare entry data from Miniflux response\nconst entries = $('Miniflux Get Unread').item.json.entries || [];\nreturn entries.map(entry => ({ json: entry }));"
+      },
+      "id": "prepare-entries",
+      "name": "Prepare Entries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 100]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Ingestion workflow encountered an error"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1350, 500]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "error_type",
+              "value": "smry_extraction_failed"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-smry-error",
+      "name": "Log SMRY Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1570, 500]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Miniflux Get Unread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Miniflux Get Unread": {
+      "main": [
+        [
+          {
+            "node": "Has Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Items?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Entries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Entries": {
+      "main": [
+        [
+          {
+            "node": "Batch Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Items": {
+      "main": [
+        [
+          {
+            "node": "Process Each Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Each Entry": {
+      "main": [
+        [
+          {
+            "node": "SMRY Extract Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMRY Extract Text": {
+      "main": [
+        [
+          {
+            "node": "Detect Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Language": {
+      "main": [
+        [
+          {
+            "node": "Generate Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Hash": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New?": {
+      "main": [
+        [
+          {
+            "node": "Insert Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Duplicate as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Content": {
+      "main": [
+        [
+          {
+            "node": "Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Read": {
+      "main": [
+        [
+          {
+            "node": "Trigger Agent 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Agent 1": {
+      "main": [
+        [
+          {
+            "node": "Log Ingestion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Duplicate as Read": {
+      "main": [
+        [
+          {
+            "node": "Process Each Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "ingestion",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "name": "production",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-01T00:00:00.000Z",
+  "versionId": "1"
+}
