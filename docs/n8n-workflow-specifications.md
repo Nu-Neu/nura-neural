@@ -927,7 +927,6 @@ Return ONLY valid JSON:
 ```
 
 Extract minimum 2 claims, maximum 10. Include the most significant claims that could be fact-checked.
-```
 
 ---
 
