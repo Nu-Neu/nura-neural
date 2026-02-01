@@ -1,0 +1,394 @@
+{
+  "name": "02 - Agent 1 IMTT Evaluation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "agent-source",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Analyze Content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "agent-source-webhook"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.content_id = $1::uuid\n  AND c.analysis_status = 'pending'\nLIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.body?.content_id || $json.query?.content_id] }}"
+        }
+      },
+      "id": "get-content-webhook",
+      "name": "Get Content (Webhook)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.analysis_status = 'pending'\nORDER BY c.ingested_at ASC\nLIMIT 10",
+        "options": {}
+      },
+      "id": "get-pending-batch",
+      "name": "Get Pending Content (Batch)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "has-content",
+      "name": "Has Content?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "process-each",
+      "name": "Process Each Content",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nura-search.search.windows.net/indexes/nura-claims/docs/search?api-version=2024-07-01",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  count: true,\n  top: 5,\n  select: 'claim_id,claim_text_en,claim_type,source_credibility,extracted_at',\n  filter: `source_credibility ne 'unverified'`,\n  search: $json.title || '',\n  queryType: 'simple'\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "search-context",
+      "name": "Search Similar Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ai-search-auth",
+          "name": "Azure AI Search"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prepare context from similar content search\nconst content = $('Process Each Content').item.json;\nconst searchResults = $json?.value || [];\n\n// Format context from similar claims\nconst contextClaims = searchResults\n  .slice(0, 3)\n  .map(r => `- ${r.claim_text_en} (Source tier: ${r.source_credibility})`)\n  .join('\\n');\n\n// Truncate content for API limits\nconst maxContentLength = 12000;\nlet contentText = content.content_text || '';\nif (contentText.length > maxContentLength) {\n  contentText = contentText.slice(0, maxContentLength) + '\\n\\n[Content truncated due to length...]';\n}\n\nreturn {\n  ...content,\n  content_text_truncated: contentText,\n  context_claims: contextClaims || 'No similar claims found in database.',\n  has_context: searchResults.length > 0\n};"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Analysis Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 400]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert media analyst specializing in evaluating news sources and content using the IMTT (Information Manipulation Typology Tool) framework, adapted for the Iranian/Middle Eastern media landscape.\n\nYou analyze content in Farsi (Persian), Arabic, Hebrew, Turkish, and English with deep cultural and political awareness. You understand:\n- Iranian state media (IRNA, PressTV, Tasnim, Fars News) vs. diaspora/opposition media\n- Gulf state media dynamics (Al Jazeera, Al Arabiya, Saudi/Emirati outlets)\n- Western coverage patterns of Iran (BBC Persian, VOA Farsi, Iran International)\n- Social media amplification patterns in Persian-language Twitter/X\n\nYou MUST:\n1. Preserve original language text EXACTLY when extracting claims (Farsi/Arabic/Hebrew characters)\n2. Provide accurate English translations for all non-English content\n3. Cite specific evidence from the content for every score\n4. Be aware of common propaganda techniques in regional media\n5. Distinguish between factual reporting bias and intentional manipulation\n\nYour evaluation must be:\n- Evidence-based: Every score needs specific textual evidence\n- Culturally informed: Understand regional media dynamics\n- Balanced: Don't assume all state media is propaganda or all independent media is reliable\n- Nuanced: Acknowledge uncertainty when evidence is limited\n\nRespond ONLY with valid JSON. No markdown formatting, no code blocks, just raw JSON."
+            },
+            {
+              "role": "user",
+              "content": "Analyze the following content using the IMTT framework.\n\n═══════════════════════════════════════════════════════════════════════════════\nCONTENT TO ANALYZE\n═══════════════════════════════════════════════════════════════════════════════\n\n**Source**: {{ $json.source_name || 'Unknown' }} ({{ $json.source_domain || 'Unknown domain' }})\n**Source Country**: {{ $json.source_country || 'Unknown' }}\n**Source Type**: {{ $json.source_type || 'Unknown' }}\n**Current Credibility Tier**: {{ $json.current_tier || 'unverified' }}\n**Previous IMTT Score**: {{ $json.prev_overall_score ? ($json.prev_overall_score * 20).toFixed(1) + '/20' : 'Never evaluated' }}\n\n**Title**: {{ $json.title || 'No title' }}\n**Language**: {{ $json.language || 'Unknown' }} (Text direction: {{ $json.text_direction || 'ltr' }})\n**Author**: {{ $json.author_name || 'Not specified' }}\n**Published**: {{ $json.published_at || 'Unknown date' }}\n**Word Count**: {{ $json.word_count || 'Unknown' }}\n\n**Content**:\n{{ $json.content_text_truncated }}\n\n═══════════════════════════════════════════════════════════════════════════════\nCONTEXT: SIMILAR CLAIMS IN DATABASE\n═══════════════════════════════════════════════════════════════════════════════\n{{ $json.context_claims }}\n\n═══════════════════════════════════════════════════════════════════════════════\nEVALUATION INSTRUCTIONS\n═══════════════════════════════════════════════════════════════════════════════\n\n## 1. IMTT PILLAR SCORES (0.0-1.0 scale, will be converted to 0-5)\n\nScore each pillar from 0.0 to 1.0 with specific justification:\n\n### INDEPENDENCE (0.0-1.0)\nIs this source independent from the political/financial actors it covers?\n\nScoring Guide:\n- 0.0-0.2: State-owned/controlled, clear propaganda outlet, funded by regime\n- 0.2-0.4: State-affiliated with limited editorial independence\n- 0.4-0.6: Partisan outlet with clear political agenda but not state-controlled\n- 0.6-0.8: Mostly independent with occasional political influence\n- 0.8-1.0: Fully independent with transparent ownership, no political ties\n\nSignals to look for:\n- State affiliation markers (official statements, government sourcing only)\n- Funding source disclosure or opacity\n- Editorial independence signals (criticism of own government)\n- Ownership structure transparency\n\n### METHODOLOGY (0.0-1.0)\nDoes the content follow journalistic standards?\n\nScoring Guide:\n- 0.0-0.2: No sourcing, fabricated quotes, no verification\n- 0.2-0.4: Poor sourcing, mostly anonymous or single-source\n- 0.4-0.6: Inconsistent sourcing, some named sources\n- 0.6-0.8: Good sourcing practices, multiple perspectives\n- 0.8-1.0: Excellent methodology, primary sources, corrections policy evident\n\nSignals to look for:\n- Named vs anonymous sources\n- Primary documents/evidence cited\n- Multiple perspectives represented\n- Quotes verified and in context\n- Data/statistics sourced\n\n### TRANSPARENCY (0.0-1.0)\nIs ownership/funding/authorship disclosed?\n\nScoring Guide:\n- 0.0-0.2: No author, no organization info, hidden ownership\n- 0.2-0.4: Minimal disclosure, vague authorship\n- 0.4-0.6: Partial transparency, author named but no credentials\n- 0.6-0.8: Good transparency, clear authorship and org info\n- 0.8-1.0: Full transparency, detailed disclosures, conflict of interest statements\n\nSignals to look for:\n- Author byline with credentials\n- Organization clearly identified\n- Funding/ownership disclosed\n- Conflict of interest statements\n- Corrections/updates noted\n\n### TRIANGULATION (0.0-1.0)\nIs information cross-checked against other sources?\n\nScoring Guide:\n- 0.0-0.2: No verification, contradicts established facts\n- 0.2-0.4: Single-source stories, no cross-checking\n- 0.4-0.6: Some verification, limited sources\n- 0.6-0.8: Regular fact-checking, multiple sources\n- 0.8-1.0: Rigorous verification, independent confirmation\n\nSignals to look for:\n- Multiple independent sources\n- Primary evidence cited\n- Cross-reference with known facts\n- Expert verification\n- Contradictory evidence acknowledged\n\n## 2. PROPAGANDA TECHNIQUES DETECTION\n\nIdentify ANY of these techniques if present (with specific evidence):\n\n- **emotional_manipulation**: Appeals to fear, anger, or outrage without factual basis\n- **false_dichotomy**: Presents only two options when more exist\n- **appeal_to_authority**: Uses authority figures to bypass evidence\n- **bandwagon**: \"Everyone agrees\" without evidence\n- **fear_mongering**: Exaggerates threats to provoke fear\n- **cherry_picking**: Selects only supporting evidence, ignores contrary\n- **whataboutism**: Deflects criticism by pointing to others' faults\n- **ad_hominem**: Attacks person instead of argument\n- **loaded_language**: Uses emotionally charged words to influence\n- **strawman**: Misrepresents opponent's position to attack it\n- **false_equivalence**: Treats unequal things as equal\n- **appeal_to_tradition**: \"We've always done it this way\"\n- **slippery_slope**: Claims one thing will inevitably lead to extreme\n- **testimonial**: Uses celebrity/authority endorsement inappropriately\n\n## 3. FACTUAL CLAIMS EXTRACTION\n\nExtract 3-7 key factual claims that could potentially be verified.\n\nFor EACH claim:\n- Preserve the EXACT original language text (Farsi/Arabic characters)\n- Provide accurate English translation\n- Classify the claim type\n- Assess verifiability\n\nClaim Types:\n- **concrete**: Specific, verifiable fact (date, number, event)\n- **attribution**: Statement attributed to a person/organization\n- **causal**: Claims X caused/leads to Y\n- **predictive**: Claims about future events\n- **quantitative**: Numerical claims, statistics\n- **narrative**: Framing/interpretation, harder to verify\n\n## 4. OVERALL ASSESSMENT\n\nProvide:\n- 2-3 sentence summary of credibility assessment\n- Key concerns or strengths\n- Confidence level in your evaluation\n\n═══════════════════════════════════════════════════════════════════════════════\nRESPONSE FORMAT (JSON ONLY)\n═══════════════════════════════════════════════════════════════════════════════\n\n{\n  \"imtt_scores\": {\n    \"independence\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5 integer, calculated as round(score * 5)>,\n      \"justification\": \"<specific evidence from content>\",\n      \"signals\": [\"<signal1>\", \"<signal2>\"]\n    },\n    \"methodology\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    },\n    \"transparency\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    },\n    \"triangulation\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    }\n  },\n  \"total_score\": <0.0-1.0, average of four pillars>,\n  \"total_score_20\": <0-20 integer, sum of score_5 values>,\n  \"credibility_tier\": \"<authoritative|reliable|mixed|questionable|propaganda>\",\n  \"tier_reasoning\": \"<why this tier was assigned>\",\n  \"propaganda_techniques\": [\n    {\n      \"technique\": \"<technique_name>\",\n      \"evidence\": \"<exact quote from content>\",\n      \"severity\": \"<low|medium|high>\",\n      \"explanation\": \"<why this is propaganda>\"\n    }\n  ],\n  \"claims\": [\n    {\n      \"original_text\": \"<claim in original language, preserve Farsi/Arabic exactly>\",\n      \"english_translation\": \"<English translation, or same if originally English>\",\n      \"language\": \"<fa|ar|he|en|tr>\",\n      \"claim_type\": \"<concrete|attribution|causal|predictive|quantitative|narrative>\",\n      \"verifiability\": \"<high|medium|low>\",\n      \"confidence\": <0.0-1.0>,\n      \"subject\": \"<main subject of claim>\",\n      \"requires_fact_check\": <true|false>\n    }\n  ],\n  \"content_analysis\": {\n    \"stance\": \"<pro_regime|anti_regime|pro_western|anti_western|neutral|mixed>\",\n    \"stance_confidence\": <0.0-1.0>,\n    \"primary_topic\": \"<main topic>\",\n    \"secondary_topics\": [\"<topic1>\", \"<topic2>\"],\n    \"emotional_tone\": \"<neutral|alarming|celebratory|critical|defensive>\",\n    \"target_audience\": \"<domestic_iranian|diaspora|international|specific_group>\"\n  },\n  \"overall_assessment\": \"<2-3 sentence summary of credibility evaluation>\",\n  \"key_concerns\": [\"<concern1>\", \"<concern2>\"],\n  \"key_strengths\": [\"<strength1>\", \"<strength2>\"],\n  \"confidence\": <0.0-1.0>,\n  \"confidence_reasoning\": \"<why this confidence level>\",\n  \"needs_escalation\": <true|false>,\n  \"escalation_reason\": \"<why escalation needed, if applicable>\"\n}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 4000,
+          "responseFormat": "json_object"
+        }
+      },
+      "id": "gpt4o-imtt-analysis",
+      "name": "GPT-4o IMTT Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [1570, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai",
+          "name": "Azure OpenAI"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse and validate GPT-4o response\nconst content = $('Prepare Analysis Context').item.json;\nconst rawResponse = $json;\n\n// Extract the actual response content\nlet analysis;\ntry {\n  if (typeof rawResponse.message?.content === 'string') {\n    analysis = JSON.parse(rawResponse.message.content);\n  } else if (typeof rawResponse.content === 'string') {\n    analysis = JSON.parse(rawResponse.content);\n  } else if (rawResponse.imtt_scores) {\n    analysis = rawResponse;\n  } else {\n    throw new Error('Unexpected response format');\n  }\n} catch (e) {\n  // Return safe defaults on parse failure\n  return {\n    content_id: content.content_id,\n    source_id: content.source_id,\n    parse_error: true,\n    error_message: e.message,\n    raw_response: JSON.stringify(rawResponse).slice(0, 500),\n    // Safe defaults\n    imtt_scores: {\n      independence: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      methodology: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      transparency: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      triangulation: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] }\n    },\n    total_score: 0.5,\n    total_score_20: 12,\n    credibility_tier: 'unverified',\n    propaganda_techniques: [],\n    claims: [],\n    confidence: 0.3,\n    needs_escalation: true,\n    escalation_reason: 'Parse error in GPT-4o response'\n  };\n}\n\n// Validate and normalize scores\nconst validateScore = (score, fallback = 0.5) => {\n  const num = parseFloat(score);\n  if (isNaN(num)) return fallback;\n  return Math.max(0, Math.min(1, num));\n};\n\nconst validateScore5 = (score) => {\n  const num = parseInt(score);\n  if (isNaN(num)) return 3;\n  return Math.max(0, Math.min(5, num));\n};\n\n// Normalize IMTT scores\nconst imtt = analysis.imtt_scores || {};\nconst normalizedImtt = {\n  independence: {\n    score: validateScore(imtt.independence?.score),\n    score_5: validateScore5(imtt.independence?.score_5 || Math.round(validateScore(imtt.independence?.score) * 5)),\n    justification: imtt.independence?.justification || '',\n    signals: imtt.independence?.signals || []\n  },\n  methodology: {\n    score: validateScore(imtt.methodology?.score),\n    score_5: validateScore5(imtt.methodology?.score_5 || Math.round(validateScore(imtt.methodology?.score) * 5)),\n    justification: imtt.methodology?.justification || '',\n    signals: imtt.methodology?.signals || []\n  },\n  transparency: {\n    score: validateScore(imtt.transparency?.score),\n    score_5: validateScore5(imtt.transparency?.score_5 || Math.round(validateScore(imtt.transparency?.score) * 5)),\n    justification: imtt.transparency?.justification || '',\n    signals: imtt.transparency?.signals || []\n  },\n  triangulation: {\n    score: validateScore(imtt.triangulation?.score),\n    score_5: validateScore5(imtt.triangulation?.score_5 || Math.round(validateScore(imtt.triangulation?.score) * 5)),\n    justification: imtt.triangulation?.justification || '',\n    signals: imtt.triangulation?.signals || []\n  }\n};\n\n// Calculate total scores\nconst totalScore = (\n  normalizedImtt.independence.score +\n  normalizedImtt.methodology.score +\n  normalizedImtt.transparency.score +\n  normalizedImtt.triangulation.score\n) / 4;\n\nconst totalScore20 = \n  normalizedImtt.independence.score_5 +\n  normalizedImtt.methodology.score_5 +\n  normalizedImtt.transparency.score_5 +\n  normalizedImtt.triangulation.score_5;\n\n// Determine credibility tier from score\nconst getTier = (score20) => {\n  if (score20 >= 18) return 'authoritative';\n  if (score20 >= 14) return 'reliable';\n  if (score20 >= 10) return 'mixed';\n  if (score20 >= 5) return 'questionable';\n  return 'propaganda';\n};\n\n// Map tier to schema enum\nconst mapTierToEnum = (tier) => {\n  const mapping = {\n    'authoritative': 'official',\n    'reliable': 'credible',\n    'mixed': 'unverified',\n    'questionable': 'partisan',\n    'propaganda': 'propaganda'\n  };\n  return mapping[tier] || 'unverified';\n};\n\nconst credibilityTier = analysis.credibility_tier || getTier(totalScore20);\nconst credibilityTierEnum = mapTierToEnum(credibilityTier);\n\n// Validate claims\nconst claims = (analysis.claims || []).map((claim, idx) => ({\n  claim_index: idx,\n  original_text: claim.original_text || claim.english_translation || '',\n  english_translation: claim.english_translation || claim.original_text || '',\n  language: claim.language || content.language || 'en',\n  claim_type: claim.claim_type || 'narrative',\n  verifiability: claim.verifiability || 'medium',\n  confidence: validateScore(claim.confidence, 0.5),\n  subject: claim.subject || '',\n  requires_fact_check: claim.requires_fact_check || false\n}));\n\n// Validate propaganda techniques\nconst propagandaTechniques = (analysis.propaganda_techniques || []).map(pt => ({\n  technique: pt.technique || 'unknown',\n  evidence: pt.evidence || '',\n  severity: pt.severity || 'low',\n  explanation: pt.explanation || ''\n}));\n\n// Calculate propaganda risk score\nconst propagandaRisk = propagandaTechniques.length === 0 ? 0 :\n  Math.min(1, propagandaTechniques.reduce((sum, pt) => {\n    const severityWeight = { low: 0.1, medium: 0.25, high: 0.4 };\n    return sum + (severityWeight[pt.severity] || 0.2);\n  }, 0));\n\n// Determine if escalation needed\nconst confidence = validateScore(analysis.confidence, 0.5);\nconst needsEscalation = analysis.needs_escalation || confidence < 0.6 || propagandaRisk > 0.7;\n\nreturn {\n  // Content reference\n  content_id: content.content_id,\n  source_id: content.source_id,\n  url: content.url,\n  title: content.title,\n  language: content.language,\n  \n  // IMTT Scores (normalized 0-1 for DB storage)\n  imtt_scores: normalizedImtt,\n  independence: normalizedImtt.independence.score,\n  methodology: normalizedImtt.methodology.score,\n  transparency: normalizedImtt.transparency.score,\n  triangulation: normalizedImtt.triangulation.score,\n  \n  // Aggregate scores\n  total_score: totalScore,\n  total_score_20: totalScore20,\n  overall_score: totalScore,\n  \n  // Tier\n  credibility_tier: credibilityTier,\n  credibility_tier_enum: credibilityTierEnum,\n  recommended_tier: credibilityTierEnum,\n  tier_reasoning: analysis.tier_reasoning || '',\n  \n  // Content Analysis\n  content_analysis: analysis.content_analysis || {},\n  stance: analysis.content_analysis?.stance || 'neutral',\n  stance_confidence: validateScore(analysis.content_analysis?.stance_confidence, 0.5),\n  emotional_tone: analysis.content_analysis?.emotional_tone || 'neutral',\n  primary_topic: analysis.content_analysis?.primary_topic || '',\n  secondary_topics: analysis.content_analysis?.secondary_topics || [],\n  \n  // Propaganda\n  propaganda_techniques: propagandaTechniques,\n  propaganda_risk: propagandaRisk,\n  propaganda_techniques_list: propagandaTechniques.map(pt => pt.technique),\n  \n  // Claims\n  claims: claims,\n  claims_count: claims.length,\n  \n  // Assessment\n  overall_assessment: analysis.overall_assessment || '',\n  key_concerns: analysis.key_concerns || [],\n  key_strengths: analysis.key_strengths || [],\n  \n  // Confidence & Escalation\n  confidence: confidence,\n  confidence_reasoning: analysis.confidence_reasoning || '',\n  needs_escalation: needsEscalation,\n  escalation_reason: analysis.escalation_reason || (needsEscalation ? 'Low confidence or high propaganda risk' : null),\n  \n  // Metadata\n  model_used: 'gpt-4o',\n  evaluated_by: 'agent1',\n  evaluation_timestamp: new Date().toISOString()\n};"
+      },
+      "id": "parse-validate",
+      "name": "Parse & Validate Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1790, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Mark previous source evaluations as not current\nUPDATE source_evaluations \nSET is_current = false \nWHERE source_id = $1::uuid AND is_current = true;\n\n-- Insert new source evaluation\nINSERT INTO source_evaluations (\n  source_id,\n  independence,\n  methodology,\n  transparency,\n  triangulation,\n  overall_score,\n  recommended_tier,\n  reasoning,\n  sample_content_ids,\n  model_used,\n  evaluated_by,\n  is_current\n) VALUES (\n  $1::uuid,\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7::credibility_tier,\n  $8,\n  ARRAY[$9]// filepath: workflows/02_agent_source.json
+{
+  "name": "02 - Agent 1 IMTT Evaluation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "agent-source",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Analyze Content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "agent-source-webhook"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.content_id = $1::uuid\n  AND c.analysis_status = 'pending'\nLIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.body?.content_id || $json.query?.content_id] }}"
+        }
+      },
+      "id": "get-content-webhook",
+      "name": "Get Content (Webhook)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.content_id,\n  c.source_id,\n  c.url,\n  c.title,\n  c.content_text,\n  c.language,\n  c.detected_language,\n  c.text_direction,\n  c.author_name,\n  c.published_at,\n  c.word_count,\n  c.ingested_at,\n  s.source_id,\n  s.source_type,\n  s.identifier AS source_domain,\n  s.name AS source_name,\n  s.name_original AS source_name_original,\n  s.country AS source_country,\n  s.primary_language AS source_language,\n  s.credibility_tier AS current_tier,\n  s.description AS source_description,\n  se.independence AS prev_independence,\n  se.methodology AS prev_methodology,\n  se.transparency AS prev_transparency,\n  se.triangulation AS prev_triangulation,\n  se.overall_score AS prev_overall_score,\n  se.evaluated_at AS last_evaluated_at\nFROM content c\nLEFT JOIN sources s ON c.source_id = s.source_id\nLEFT JOIN source_evaluations se ON s.source_id = se.source_id AND se.is_current = true\nWHERE c.analysis_status = 'pending'\nORDER BY c.ingested_at ASC\nLIMIT 10",
+        "options": {}
+      },
+      "id": "get-pending-batch",
+      "name": "Get Pending Content (Batch)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "has-content",
+      "name": "Has Content?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "process-each",
+      "name": "Process Each Content",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://nura-search.search.windows.net/indexes/nura-claims/docs/search?api-version=2024-07-01",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  count: true,\n  top: 5,\n  select: 'claim_id,claim_text_en,claim_type,source_credibility,extracted_at',\n  filter: `source_credibility ne 'unverified'`,\n  search: $json.title || '',\n  queryType: 'simple'\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "search-context",
+      "name": "Search Similar Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ai-search-auth",
+          "name": "Azure AI Search"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prepare context from similar content search\nconst content = $('Process Each Content').item.json;\nconst searchResults = $json?.value || [];\n\n// Format context from similar claims\nconst contextClaims = searchResults\n  .slice(0, 3)\n  .map(r => `- ${r.claim_text_en} (Source tier: ${r.source_credibility})`)\n  .join('\\n');\n\n// Truncate content for API limits\nconst maxContentLength = 12000;\nlet contentText = content.content_text || '';\nif (contentText.length > maxContentLength) {\n  contentText = contentText.slice(0, maxContentLength) + '\\n\\n[Content truncated due to length...]';\n}\n\nreturn {\n  ...content,\n  content_text_truncated: contentText,\n  context_claims: contextClaims || 'No similar claims found in database.',\n  has_context: searchResults.length > 0\n};"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Analysis Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 400]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert media analyst specializing in evaluating news sources and content using the IMTT (Information Manipulation Typology Tool) framework, adapted for the Iranian/Middle Eastern media landscape.\n\nYou analyze content in Farsi (Persian), Arabic, Hebrew, Turkish, and English with deep cultural and political awareness. You understand:\n- Iranian state media (IRNA, PressTV, Tasnim, Fars News) vs. diaspora/opposition media\n- Gulf state media dynamics (Al Jazeera, Al Arabiya, Saudi/Emirati outlets)\n- Western coverage patterns of Iran (BBC Persian, VOA Farsi, Iran International)\n- Social media amplification patterns in Persian-language Twitter/X\n\nYou MUST:\n1. Preserve original language text EXACTLY when extracting claims (Farsi/Arabic/Hebrew characters)\n2. Provide accurate English translations for all non-English content\n3. Cite specific evidence from the content for every score\n4. Be aware of common propaganda techniques in regional media\n5. Distinguish between factual reporting bias and intentional manipulation\n\nYour evaluation must be:\n- Evidence-based: Every score needs specific textual evidence\n- Culturally informed: Understand regional media dynamics\n- Balanced: Don't assume all state media is propaganda or all independent media is reliable\n- Nuanced: Acknowledge uncertainty when evidence is limited\n\nRespond ONLY with valid JSON. No markdown formatting, no code blocks, just raw JSON."
+            },
+            {
+              "role": "user",
+              "content": "Analyze the following content using the IMTT framework.\n\n═══════════════════════════════════════════════════════════════════════════════\nCONTENT TO ANALYZE\n═══════════════════════════════════════════════════════════════════════════════\n\n**Source**: {{ $json.source_name || 'Unknown' }} ({{ $json.source_domain || 'Unknown domain' }})\n**Source Country**: {{ $json.source_country || 'Unknown' }}\n**Source Type**: {{ $json.source_type || 'Unknown' }}\n**Current Credibility Tier**: {{ $json.current_tier || 'unverified' }}\n**Previous IMTT Score**: {{ $json.prev_overall_score ? ($json.prev_overall_score * 20).toFixed(1) + '/20' : 'Never evaluated' }}\n\n**Title**: {{ $json.title || 'No title' }}\n**Language**: {{ $json.language || 'Unknown' }} (Text direction: {{ $json.text_direction || 'ltr' }})\n**Author**: {{ $json.author_name || 'Not specified' }}\n**Published**: {{ $json.published_at || 'Unknown date' }}\n**Word Count**: {{ $json.word_count || 'Unknown' }}\n\n**Content**:\n{{ $json.content_text_truncated }}\n\n═══════════════════════════════════════════════════════════════════════════════\nCONTEXT: SIMILAR CLAIMS IN DATABASE\n═══════════════════════════════════════════════════════════════════════════════\n{{ $json.context_claims }}\n\n═══════════════════════════════════════════════════════════════════════════════\nEVALUATION INSTRUCTIONS\n═══════════════════════════════════════════════════════════════════════════════\n\n## 1. IMTT PILLAR SCORES (0.0-1.0 scale, will be converted to 0-5)\n\nScore each pillar from 0.0 to 1.0 with specific justification:\n\n### INDEPENDENCE (0.0-1.0)\nIs this source independent from the political/financial actors it covers?\n\nScoring Guide:\n- 0.0-0.2: State-owned/controlled, clear propaganda outlet, funded by regime\n- 0.2-0.4: State-affiliated with limited editorial independence\n- 0.4-0.6: Partisan outlet with clear political agenda but not state-controlled\n- 0.6-0.8: Mostly independent with occasional political influence\n- 0.8-1.0: Fully independent with transparent ownership, no political ties\n\nSignals to look for:\n- State affiliation markers (official statements, government sourcing only)\n- Funding source disclosure or opacity\n- Editorial independence signals (criticism of own government)\n- Ownership structure transparency\n\n### METHODOLOGY (0.0-1.0)\nDoes the content follow journalistic standards?\n\nScoring Guide:\n- 0.0-0.2: No sourcing, fabricated quotes, no verification\n- 0.2-0.4: Poor sourcing, mostly anonymous or single-source\n- 0.4-0.6: Inconsistent sourcing, some named sources\n- 0.6-0.8: Good sourcing practices, multiple perspectives\n- 0.8-1.0: Excellent methodology, primary sources, corrections policy evident\n\nSignals to look for:\n- Named vs anonymous sources\n- Primary documents/evidence cited\n- Multiple perspectives represented\n- Quotes verified and in context\n- Data/statistics sourced\n\n### TRANSPARENCY (0.0-1.0)\nIs ownership/funding/authorship disclosed?\n\nScoring Guide:\n- 0.0-0.2: No author, no organization info, hidden ownership\n- 0.2-0.4: Minimal disclosure, vague authorship\n- 0.4-0.6: Partial transparency, author named but no credentials\n- 0.6-0.8: Good transparency, clear authorship and org info\n- 0.8-1.0: Full transparency, detailed disclosures, conflict of interest statements\n\nSignals to look for:\n- Author byline with credentials\n- Organization clearly identified\n- Funding/ownership disclosed\n- Conflict of interest statements\n- Corrections/updates noted\n\n### TRIANGULATION (0.0-1.0)\nIs information cross-checked against other sources?\n\nScoring Guide:\n- 0.0-0.2: No verification, contradicts established facts\n- 0.2-0.4: Single-source stories, no cross-checking\n- 0.4-0.6: Some verification, limited sources\n- 0.6-0.8: Regular fact-checking, multiple sources\n- 0.8-1.0: Rigorous verification, independent confirmation\n\nSignals to look for:\n- Multiple independent sources\n- Primary evidence cited\n- Cross-reference with known facts\n- Expert verification\n- Contradictory evidence acknowledged\n\n## 2. PROPAGANDA TECHNIQUES DETECTION\n\nIdentify ANY of these techniques if present (with specific evidence):\n\n- **emotional_manipulation**: Appeals to fear, anger, or outrage without factual basis\n- **false_dichotomy**: Presents only two options when more exist\n- **appeal_to_authority**: Uses authority figures to bypass evidence\n- **bandwagon**: \"Everyone agrees\" without evidence\n- **fear_mongering**: Exaggerates threats to provoke fear\n- **cherry_picking**: Selects only supporting evidence, ignores contrary\n- **whataboutism**: Deflects criticism by pointing to others' faults\n- **ad_hominem**: Attacks person instead of argument\n- **loaded_language**: Uses emotionally charged words to influence\n- **strawman**: Misrepresents opponent's position to attack it\n- **false_equivalence**: Treats unequal things as equal\n- **appeal_to_tradition**: \"We've always done it this way\"\n- **slippery_slope**: Claims one thing will inevitably lead to extreme\n- **testimonial**: Uses celebrity/authority endorsement inappropriately\n\n## 3. FACTUAL CLAIMS EXTRACTION\n\nExtract 3-7 key factual claims that could potentially be verified.\n\nFor EACH claim:\n- Preserve the EXACT original language text (Farsi/Arabic characters)\n- Provide accurate English translation\n- Classify the claim type\n- Assess verifiability\n\nClaim Types:\n- **concrete**: Specific, verifiable fact (date, number, event)\n- **attribution**: Statement attributed to a person/organization\n- **causal**: Claims X caused/leads to Y\n- **predictive**: Claims about future events\n- **quantitative**: Numerical claims, statistics\n- **narrative**: Framing/interpretation, harder to verify\n\n## 4. OVERALL ASSESSMENT\n\nProvide:\n- 2-3 sentence summary of credibility assessment\n- Key concerns or strengths\n- Confidence level in your evaluation\n\n═══════════════════════════════════════════════════════════════════════════════\nRESPONSE FORMAT (JSON ONLY)\n═══════════════════════════════════════════════════════════════════════════════\n\n{\n  \"imtt_scores\": {\n    \"independence\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5 integer, calculated as round(score * 5)>,\n      \"justification\": \"<specific evidence from content>\",\n      \"signals\": [\"<signal1>\", \"<signal2>\"]\n    },\n    \"methodology\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    },\n    \"transparency\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    },\n    \"triangulation\": {\n      \"score\": <0.0-1.0>,\n      \"score_5\": <0-5>,\n      \"justification\": \"<specific evidence>\",\n      \"signals\": []\n    }\n  },\n  \"total_score\": <0.0-1.0, average of four pillars>,\n  \"total_score_20\": <0-20 integer, sum of score_5 values>,\n  \"credibility_tier\": \"<authoritative|reliable|mixed|questionable|propaganda>\",\n  \"tier_reasoning\": \"<why this tier was assigned>\",\n  \"propaganda_techniques\": [\n    {\n      \"technique\": \"<technique_name>\",\n      \"evidence\": \"<exact quote from content>\",\n      \"severity\": \"<low|medium|high>\",\n      \"explanation\": \"<why this is propaganda>\"\n    }\n  ],\n  \"claims\": [\n    {\n      \"original_text\": \"<claim in original language, preserve Farsi/Arabic exactly>\",\n      \"english_translation\": \"<English translation, or same if originally English>\",\n      \"language\": \"<fa|ar|he|en|tr>\",\n      \"claim_type\": \"<concrete|attribution|causal|predictive|quantitative|narrative>\",\n      \"verifiability\": \"<high|medium|low>\",\n      \"confidence\": <0.0-1.0>,\n      \"subject\": \"<main subject of claim>\",\n      \"requires_fact_check\": <true|false>\n    }\n  ],\n  \"content_analysis\": {\n    \"stance\": \"<pro_regime|anti_regime|pro_western|anti_western|neutral|mixed>\",\n    \"stance_confidence\": <0.0-1.0>,\n    \"primary_topic\": \"<main topic>\",\n    \"secondary_topics\": [\"<topic1>\", \"<topic2>\"],\n    \"emotional_tone\": \"<neutral|alarming|celebratory|critical|defensive>\",\n    \"target_audience\": \"<domestic_iranian|diaspora|international|specific_group>\"\n  },\n  \"overall_assessment\": \"<2-3 sentence summary of credibility evaluation>\",\n  \"key_concerns\": [\"<concern1>\", \"<concern2>\"],\n  \"key_strengths\": [\"<strength1>\", \"<strength2>\"],\n  \"confidence\": <0.0-1.0>,\n  \"confidence_reasoning\": \"<why this confidence level>\",\n  \"needs_escalation\": <true|false>,\n  \"escalation_reason\": \"<why escalation needed, if applicable>\"\n}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 4000,
+          "responseFormat": "json_object"
+        }
+      },
+      "id": "gpt4o-imtt-analysis",
+      "name": "GPT-4o IMTT Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [1570, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai",
+          "name": "Azure OpenAI"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse and validate GPT-4o response\nconst content = $('Prepare Analysis Context').item.json;\nconst rawResponse = $json;\n\n// Extract the actual response content\nlet analysis;\ntry {\n  if (typeof rawResponse.message?.content === 'string') {\n    analysis = JSON.parse(rawResponse.message.content);\n  } else if (typeof rawResponse.content === 'string') {\n    analysis = JSON.parse(rawResponse.content);\n  } else if (rawResponse.imtt_scores) {\n    analysis = rawResponse;\n  } else {\n    throw new Error('Unexpected response format');\n  }\n} catch (e) {\n  // Return safe defaults on parse failure\n  return {\n    content_id: content.content_id,\n    source_id: content.source_id,\n    parse_error: true,\n    error_message: e.message,\n    raw_response: JSON.stringify(rawResponse).slice(0, 500),\n    // Safe defaults\n    imtt_scores: {\n      independence: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      methodology: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      transparency: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] },\n      triangulation: { score: 0.5, score_5: 3, justification: 'Parse error - using defaults', signals: [] }\n    },\n    total_score: 0.5,\n    total_score_20: 12,\n    credibility_tier: 'unverified',\n    propaganda_techniques: [],\n    claims: [],\n    confidence: 0.3,\n    needs_escalation: true,\n    escalation_reason: 'Parse error in GPT-4o response'\n  };\n}\n\n// Validate and normalize scores\nconst validateScore = (score, fallback = 0.5) => {\n  const num = parseFloat(score);\n  if (isNaN(num)) return fallback;\n  return Math.max(0, Math.min(1, num));\n};\n\nconst validateScore5 = (score) => {\n  const num = parseInt(score);\n  if (isNaN(num)) return 3;\n  return Math.max(0, Math.min(5, num));\n};\n\n// Normalize IMTT scores\nconst imtt = analysis.imtt_scores || {};\nconst normalizedImtt = {\n  independence: {\n    score: validateScore(imtt.independence?.score),\n    score_5: validateScore5(imtt.independence?.score_5 || Math.round(validateScore(imtt.independence?.score) * 5)),\n    justification: imtt.independence?.justification || '',\n    signals: imtt.independence?.signals || []\n  },\n  methodology: {\n    score: validateScore(imtt.methodology?.score),\n    score_5: validateScore5(imtt.methodology?.score_5 || Math.round(validateScore(imtt.methodology?.score) * 5)),\n    justification: imtt.methodology?.justification || '',\n    signals: imtt.methodology?.signals || []\n  },\n  transparency: {\n    score: validateScore(imtt.transparency?.score),\n    score_5: validateScore5(imtt.transparency?.score_5 || Math.round(validateScore(imtt.transparency?.score) * 5)),\n    justification: imtt.transparency?.justification || '',\n    signals: imtt.transparency?.signals || []\n  },\n  triangulation: {\n    score: validateScore(imtt.triangulation?.score),\n    score_5: validateScore5(imtt.triangulation?.score_5 || Math.round(validateScore(imtt.triangulation?.score) * 5)),\n    justification: imtt.triangulation?.justification || '',\n    signals: imtt.triangulation?.signals || []\n  }\n};\n\n// Calculate total scores\nconst totalScore = (\n  normalizedImtt.independence.score +\n  normalizedImtt.methodology.score +\n  normalizedImtt.transparency.score +\n  normalizedImtt.triangulation.score\n) / 4;\n\nconst totalScore20 = \n  normalizedImtt.independence.score_5 +\n  normalizedImtt.methodology.score_5 +\n  normalizedImtt.transparency.score_5 +\n  normalizedImtt.triangulation.score_5;\n\n// Determine credibility tier from score\nconst getTier = (score20) => {\n  if (score20 >= 18) return 'authoritative';\n  if (score20 >= 14) return 'reliable';\n  if (score20 >= 10) return 'mixed';\n  if (score20 >= 5) return 'questionable';\n  return 'propaganda';\n};\n\n// Map tier to schema enum\nconst mapTierToEnum = (tier) => {\n  const mapping = {\n    'authoritative': 'official',\n    'reliable': 'credible',\n    'mixed': 'unverified',\n    'questionable': 'partisan',\n    'propaganda': 'propaganda'\n  };\n  return mapping[tier] || 'unverified';\n};\n\nconst credibilityTier = analysis.credibility_tier || getTier(totalScore20);\nconst credibilityTierEnum = mapTierToEnum(credibilityTier);\n\n// Validate claims\nconst claims = (analysis.claims || []).map((claim, idx) => ({\n  claim_index: idx,\n  original_text: claim.original_text || claim.english_translation || '',\n  english_translation: claim.english_translation || claim.original_text || '',\n  language: claim.language || content.language || 'en',\n  claim_type: claim.claim_type || 'narrative',\n  verifiability: claim.verifiability || 'medium',\n  confidence: validateScore(claim.confidence, 0.5),\n  subject: claim.subject || '',\n  requires_fact_check: claim.requires_fact_check || false\n}));\n\n// Validate propaganda techniques\nconst propagandaTechniques = (analysis.propaganda_techniques || []).map(pt => ({\n  technique: pt.technique || 'unknown',\n  evidence: pt.evidence || '',\n  severity: pt.severity || 'low',\n  explanation: pt.explanation || ''\n}));\n\n// Calculate propaganda risk score\nconst propagandaRisk = propagandaTechniques.length === 0 ? 0 :\n  Math.min(1, propagandaTechniques.reduce((sum, pt) => {\n    const severityWeight = { low: 0.1, medium: 0.25, high: 0.4 };\n    return sum + (severityWeight[pt.severity] || 0.2);\n  }, 0));\n\n// Determine if escalation needed\nconst confidence = validateScore(analysis.confidence, 0.5);\nconst needsEscalation = analysis.needs_escalation || confidence < 0.6 || propagandaRisk > 0.7;\n\nreturn {\n  // Content reference\n  content_id: content.content_id,\n  source_id: content.source_id,\n  url: content.url,\n  title: content.title,\n  language: content.language,\n  \n  // IMTT Scores (normalized 0-1 for DB storage)\n  imtt_scores: normalizedImtt,\n  independence: normalizedImtt.independence.score,\n  methodology: normalizedImtt.methodology.score,\n  transparency: normalizedImtt.transparency.score,\n  triangulation: normalizedImtt.triangulation.score,\n  \n  // Aggregate scores\n  total_score: totalScore,\n  total_score_20: totalScore20,\n  overall_score: totalScore,\n  \n  // Tier\n  credibility_tier: credibilityTier,\n  credibility_tier_enum: credibilityTierEnum,\n  recommended_tier: credibilityTierEnum,\n  tier_reasoning: analysis.tier_reasoning || '',\n  \n  // Content Analysis\n  content_analysis: analysis.content_analysis || {},\n  stance: analysis.content_analysis?.stance || 'neutral',\n  stance_confidence: validateScore(analysis.content_analysis?.stance_confidence, 0.5),\n  emotional_tone: analysis.content_analysis?.emotional_tone || 'neutral',\n  primary_topic: analysis.content_analysis?.primary_topic || '',\n  secondary_topics: analysis.content_analysis?.secondary_topics || [],\n  \n  // Propaganda\n  propaganda_techniques: propagandaTechniques,\n  propaganda_risk: propagandaRisk,\n  propaganda_techniques_list: propagandaTechniques.map(pt => pt.technique),\n  \n  // Claims\n  claims: claims,\n  claims_count: claims.length,\n  \n  // Assessment\n  overall_assessment: analysis.overall_assessment || '',\n  key_concerns: analysis.key_concerns || [],\n  key_strengths: analysis.key_strengths || [],\n  \n  // Confidence & Escalation\n  confidence: confidence,\n  confidence_reasoning: analysis.confidence_reasoning || '',\n  needs_escalation: needsEscalation,\n  escalation_reason: analysis.escalation_reason || (needsEscalation ? 'Low confidence or high propaganda risk' : null),\n  \n  // Metadata\n  model_used: 'gpt-4o',\n  evaluated_by: 'agent1',\n  evaluation_timestamp: new Date().toISOString()\n};"
+      },
+      "id": "parse-validate",
+      "name": "Parse & Validate Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1790, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Mark previous source evaluations as not current\nUPDATE source_evaluations \nSET is_current = false \nWHERE source_id = $1::uuid AND is_current = true;\n\n-- Insert new source evaluation\nINSERT INTO source_evaluations (\n  source_id,\n  independence,\n  methodology,\n  transparency,\n  triangulation,\n  overall_score,\n  recommended_tier,\n  reasoning,\n  sample_content_ids,\n  model_used,\n  evaluated_by,\n  is_current\n) VALUES (\n  $1::uuid,\n  $2,\n  $3,\n  $4,\n  $5,\n  $6,\n  $7::credibility_tier,\n  $8,\n  ARRAY[$9]
