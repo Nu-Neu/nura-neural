@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""Apply database schema to PostgreSQL"""
+"""Apply MVP database schema to PostgreSQL"""
 import psycopg2
 import sys
+import os
 from pathlib import Path
 
-# Connection settings
+# Connection settings - prefer environment variables
 conn_params = {
-    "host": "irdecode-prod-psql.postgres.database.azure.com",
-    "port": 5432,
-    "database": "nura",
-    "user": "pgadmin",
-    "password": "NuraNeural@2026!Pg",
+    "host": os.getenv("PGHOST", "irdecode-prod-psql.postgres.database.azure.com"),
+    "port": int(os.getenv("PGPORT", "5432")),
+    "database": os.getenv("PGDATABASE", "nura"),
+    "user": os.getenv("PGUSER", "pgadmin"),
+    "password": os.getenv("PGPASSWORD", "NuraNeural@2026!Pg"),
     "sslmode": "require"
 }
 
 def main():
-    schema_file = Path(__file__).parent.parent / "database" / "schema.sql"
+    # Use simplified MVP schema (4 core tables per Technical Decision Meeting)
+    schema_file = Path(__file__).parent.parent / "database" / "schema_mvp.sql"
+    
+    # Fallback to original if MVP doesn't exist
+    if not schema_file.exists():
+        schema_file = Path(__file__).parent.parent / "database" / "schema.sql"
     
     if not schema_file.exists():
         print(f"Schema file not found: {schema_file}")
@@ -40,22 +46,43 @@ def main():
         existing = [r[0] for r in cur.fetchall()]
         print(f"Existing tables: {existing if existing else 'None'}")
         
-        if "content" in existing:
-            print("Schema already applied (content table exists)")
+        # Check for MVP schema marker (trust_signals is unique to MVP)
+        if "trust_signals" in existing:
+            print("MVP Schema already applied (trust_signals table exists)")
             return
         
-        print("Applying schema...")
-        cur.execute(schema_sql)
-        print("Schema applied successfully!")
+        # Check for old complex schema
+        if "content" in existing or "claims" in existing:
+            print("WARNING: Old complex schema detected!")
+            print("Tables found: content, claims - these are not part of MVP")
+            print("Consider dropping old schema first or use a fresh database")
+            response = input("Continue with MVP schema? (y/N): ")
+            if response.lower() != 'y':
+                print("Aborted.")
+                return
         
-        # Verify
+        print("Applying MVP schema (4 core tables)...")
+        cur.execute(schema_sql)
+        print("MVP Schema applied successfully!")
+        
+        # Verify - check for the 4 core tables
         cur.execute("""
             SELECT table_name FROM information_schema.tables 
             WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
             ORDER BY table_name
         """)
         tables = [r[0] for r in cur.fetchall()]
-        print(f"Tables created: {tables}")
+        
+        core_tables = ['source_profiles', 'items', 'narratives', 'trust_signals']
+        missing = [t for t in core_tables if t not in tables]
+        
+        if missing:
+            print(f"WARNING: Missing core tables: {missing}")
+        else:
+            print(f"✓ All 4 core tables created: {core_tables}")
+        
+        print(f"Total tables created: {len(tables)}")
+        print(f"Tables: {tables}")
         
         cur.close()
         conn.close()
