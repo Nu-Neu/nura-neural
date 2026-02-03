@@ -80,8 +80,7 @@ traceability:
 ## 3. Workflow Architecture Overview
 
 ### 3.1 System Diagram
-
-\`\`\`mermaid
+```mermaid
 graph TB
     subgraph "External Sources"
         RSS[RSS Feeds<br/>500 sources<br/>Miniflux]
@@ -146,8 +145,72 @@ graph TB
     style WF03 fill:#FFD93D,color:#000
     style PG fill:#4CAF50,color:#fff
     style OpenAI fill:#FF6B6B,color:#fff
+    style Redis fill:#6BCB77,color:#fffgraph TB
+    subgraph "External Sources"
+        RSS[RSS Feeds<br/>500 sources<br/>Miniflux]
+        Twitter[Twitter API<br/>200 accounts<br/>twitterapi.io]
+    end
+
+    subgraph "n8n Workflows (Queue Mode)"
+        WF01[WF-01: RSS Ingestion<br/>Every 15 min<br/>Deduplication]
+        WF02[WF-02: Twitter Collection<br/>Every 5 min<br/>Rate limit aware]
+        WF03[WF-03: Article Processing<br/>Every 2 min<br/>GPT-5 nano + Embeddings]
+        WF04[WF-04: Narrative Clustering<br/>Every 15 min<br/>Vector Search + GPT]
+        WF05[WF-05: AI Search Sync<br/>Every 15 min<br/>Delta sync]
+        WF06[WF-06: Daily Cleanup<br/>2 AM daily<br/>Archival]
+        WFError[WF-ERROR-HANDLER<br/>Central error logging]
+    end
+
+    subgraph "Storage Layer"
+        PG[(PostgreSQL B2s<br/>Source of Truth<br/>articles, trust_signals)]
+        Redis[(Redis 7<br/>Queue + Cache)]
+        Blob[Azure Blob<br/>Raw HTML Archive]
+        AISearch[Azure AI Search<br/>Read Cache]
+    end
+
+    subgraph "AI Services"
+        OpenAI[Azure OpenAI<br/>GPT-5 nano<br/>text-embedding-3-small]
+    end
+
+    RSS -->|Webhook| WF01
+    Twitter -->|Polling| WF02
+    WF01 -->|Insert| PG
+    WF02 -->|Insert| PG
+    WF01 -->|Archive| Blob
+
+    PG -->|status=pending| WF03
+    WF03 -->|Metadata| OpenAI
+    WF03 -->|Embeddings| OpenAI
+    WF03 -->|Update| PG
+
+    PG -->|status=ai_processed| WF04
+    WF04 -->|Vector Search| PG
+    WF04 -->|Generate Title| OpenAI
+    WF04 -->|Update| PG
+
+    PG -->|Delta| WF05
+    WF05 -->|Sync| AISearch
+
+    PG -->|Cleanup| WF06
+    Blob -->|Cool tier| WF06
+
+    WF01 -.Error.-> WFError
+    WF02 -.Error.-> WFError
+    WF03 -.Error.-> WFError
+    WF04 -.Error.-> WFError
+    WF05 -.Error.-> WFError
+
+    WF01 -->|Queue| Redis
+    WF02 -->|Queue| Redis
+    WF03 -->|Queue| Redis
+    WF04 -->|Queue| Redis
+    WF05 -->|Queue| Redis
+
+    style WF03 fill:#FFD93D,color:#000
+    style PG fill:#4CAF50,color:#fff
+    style OpenAI fill:#FF6B6B,color:#fff
     style Redis fill:#6BCB77,color:#fff
-\`\`\`
+```
 
 ---
 
@@ -163,7 +226,7 @@ graph TB
 
 **Nodes:**
 
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant Cron
     participant Miniflux
@@ -197,11 +260,11 @@ sequenceDiagram
             end
         end
     end
-\`\`\`
+```
 
 **Node Configuration:**
 
-\`\`\`yaml
+```yaml
 Node 1: Cron Trigger
   Type: @n8n/n8n-nodes-base.cron
   Parameters:
@@ -368,7 +431,7 @@ Node 12: Increment Counter (Redis)
   Parameters:
     operation: "incr"
     key: "stats:daily_ingested_count:{{ $now.format('YYYY-MM-DD') }}"
-\`\`\`
+```
 
 **Error Handling:**
 - Built-in retry: 3 attempts با 2-second delay
@@ -392,7 +455,7 @@ Node 12: Increment Counter (Redis)
 
 **Node Configuration:**
 
-\`\`\`yaml
+```yaml
 Node 1: Cron Trigger
   cronExpression: "*/5 * * * *"
 
@@ -470,7 +533,7 @@ Node 10: Update Last Tweet ID (Redis)
   key: "twitter:{{ $item(0).$json.id }}:last_tweet_id"
   value: "={{ $json.tweet_id }}"
   ttl: 86400
-\`\`\`
+```
 
 **Rate Limit Strategy:**
 - Detect 429 response → Wait 60s → Retry
@@ -493,7 +556,7 @@ Node 10: Update Last Tweet ID (Redis)
 
 **Flow Diagram:**
 
-\`\`\`mermaid
+```mermaid
 graph TD
     Start[Database Poll<br/>Every 2 min] --> Query[SELECT * FROM articles<br/>WHERE status='pending'<br/>LIMIT 100]
     Query --> HasItems{Items found?}
@@ -524,11 +587,11 @@ graph TD
     OpenCircuit --> End
     MarkFailed --> End
     Retry --> GPT5
-\`\`\`
+```
 
 **Node Configuration (Detailed):**
 
-\`\`\`yaml
+```yaml
 Node 1: Database Poll Trigger
   Type: @n8n/n8n-nodes-base.postgres
   Parameters:
@@ -764,7 +827,7 @@ Node 14: Log Metrics (Redis)
   Parameters:
     operation: "incr"
     key: "metrics:wf03:success:{{ $now.format('YYYY-MM-DD') }}"
-\`\`\`
+```
 
 **Performance Optimizations:**
 - ✅ Batch processing: 20 articles at once
@@ -797,7 +860,7 @@ Total: ~$32/month ✅ (vs $100 with GPT-4o-mini)
 
 **Algorithm:**
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     Start[Get Unassigned Articles] --> Loop[Loop over articles]
     Loop --> VecSearch[pgvector HNSW Search<br/>Find top 10 similar narratives]
@@ -822,11 +885,11 @@ flowchart TD
 
     Update1 --> Recalc[Recalculate centroid<br/>AVG(embeddings)]
     Recalc --> End[Done]
-\`\`\`
+```
 
 **Node Configuration:**
 
-\`\`\`yaml
+```yaml
 Node 1: Get Unassigned Articles
   Query: |
     SELECT 
@@ -991,7 +1054,7 @@ Node 9: Recalculate Centroid
       ),
       last_updated_at = NOW()
     WHERE n.id = $1
-\`\`\`
+```
 
 **Performance:**
 - Vector search: < 300ms (HNSW index)
@@ -1010,7 +1073,7 @@ Node 9: Recalculate Centroid
 
 **Node Configuration:**
 
-\`\`\`yaml
+```yaml
 Node 1: Get Last Sync Timestamp (Redis)
   Type: redis
   operation: get
@@ -1087,7 +1150,7 @@ Node 6: Log Metrics
   operation: incrby
   key: "metrics:sync:items_synced:{{ $now.format('YYYY-MM-DD') }}"
   value: "={{ $json.length }}"
-\`\`\`
+```
 
 **Constraints:**
 - Max 100 docs per batch (Azure limit)
