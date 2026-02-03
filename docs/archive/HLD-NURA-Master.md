@@ -4,7 +4,7 @@ version: 2.1
 last_updated: 2026-02-03
 owner: Amir (Software Architect) + Sina (DevOps Lead)
 status: approved
-traceability: [Ref: SRS-v2.4, Ref: ENG-SPEC-v4.0, Ref: ADR-009-v2.2, Ref: workflow-pg-to-ai-search-sync-v2.0]
+traceability: [Ref: SRS-v2.4 (docs/01_REQUIREMENTS/SRS-Master.md), Ref: ENG-SPEC-v4.0, Ref: ADR-009-v2.2, Ref: workflow-pg-to-ai-search-sync-v2.0]
 ---
 
 # High-Level Design (HLD) v2.1 - NURA Platform
