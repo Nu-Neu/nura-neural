@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Nura Neural - Clean Migration to MVP v2.0
--- Version: V005
+-- Version: V006
 -- Date: February 4, 2026
 -- 
 -- Purpose: Clean migration from V002/V003 schema to V004 MVP schema
@@ -369,4 +369,4 @@ FROM pg_type
 WHERE typcategory = 'E' AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
 ORDER BY typname;
 
-\echo 'Migration V005 complete!'
+\echo 'Migration V006 complete!'

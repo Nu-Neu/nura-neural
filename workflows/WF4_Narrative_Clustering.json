@@ -2,81 +2,664 @@
   "name": "WF4: Narrative Clustering Pipeline",
   "nodes": [
     {
-      "parameters": {},
-      "name": "When trust score calculated",
-      "type": "n8n-nodes-base.postgresTrigger",
-      "position": [250, 300],
-      "typeVersion": 1,
-      "notes": "Trigger when items.trust_score is set"
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-clustering",
+      "name": "Schedule (10min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300],
+      "notes": "Poll for scored items every 10 minutes"
     },
     {
-      "parameters": {},
-      "name": "Vector Search for Similar Items",
+      "parameters": {
+        "operation": "select",
+        "query": "SELECT check_workflow_health('WF4_Narrative_Clustering') as can_proceed",
+        "options": {}
+      },
+      "id": "check-circuit",
+      "name": "Check Circuit Breaker",
       "type": "n8n-nodes-base.postgres",
-      "position": [450, 300],
-      "notes": "REQ-AI-004: Search 14-day window with cosine similarity ≥ 0.75"
+      "typeVersion": 2.5,
+      "position": [480, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
     },
     {
-      "parameters": {},
-      "name": "Check Strong Match (≥0.85)",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "circuit-check",
+              "leftValue": "={{ $json.can_proceed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-circuit-open",
+      "name": "IF Circuit Open",
       "type": "n8n-nodes-base.if",
-      "position": [650, 300],
-      "notes": "If cosine_sim ≥ 0.85, assign to existing narrative immediately"
+      "typeVersion": 2,
+      "position": [700, 300]
     },
     {
-      "parameters": {},
-      "name": "Check Entity Overlap",
-      "type": "n8n-nodes-base.function",
-      "position": [850, 400],
-      "notes": "For moderate matches (≥0.75), check if ≥2 shared entities"
+      "parameters": {
+        "operation": "select",
+        "query": "SELECT i.id, i.source_id, i.title, i.content, i.embedding, i.ai_metadata,\n       i.trust_score, i.published_at, i.narrative_id\nFROM items i\nWHERE i.status = 'scored' \nAND i.narrative_id IS NULL\nAND i.embedding IS NOT NULL\nAND i.processed_at > NOW() - interval '24 hours'\nORDER BY i.processed_at DESC\nLIMIT 15\nFOR UPDATE SKIP LOCKED",
+        "options": {}
+      },
+      "id": "get-scored-items",
+      "name": "Get Scored Items (No Narrative)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Get scored items that need narrative assignment"
     },
     {
-      "parameters": {},
+      "parameters": {
+        "operation": "select",
+        "query": "WITH similar_items AS (\n  SELECT \n    i2.id as match_id,\n    i2.narrative_id,\n    i2.title as match_title,\n    i2.ai_metadata as match_metadata,\n    1 - (i.embedding <=> i2.embedding) as similarity\n  FROM items i\n  JOIN items i2 ON i2.id != i.id \n    AND i2.embedding IS NOT NULL\n    AND i2.narrative_id IS NOT NULL\n  WHERE i.id = $1::uuid\n    AND i2.published_at > NOW() - interval '14 days'\n  ORDER BY i.embedding <=> i2.embedding\n  LIMIT 10\n)\nSELECT \n  match_id,\n  narrative_id,\n  match_title,\n  match_metadata,\n  similarity\nFROM similar_items\nWHERE similarity >= 0.75\nORDER BY similarity DESC",
+        "options": {
+          "queryReplacement": "={{ $json.id }}"
+        }
+      },
+      "id": "find-similar-items",
+      "name": "Find Similar Items (≥0.75)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1140, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "REQ-AI-004: Vector search within 14-day window"
+    },
+    {
+      "parameters": {
+        "jsCode": "// REQ-AI-004: Analyze matches and decide clustering action\nconst currentItem = $('Get Scored Items (No Narrative)').item.json;\nconst matches = $input.first().json;\n\n// Convert single object to array if needed\nconst matchArray = Array.isArray(matches) ? matches : (matches?.match_id ? [matches] : []);\n\nif (matchArray.length === 0) {\n  // No similar items found - need to create new narrative\n  return [{\n    json: {\n      ...currentItem,\n      clustering_action: 'create_new',\n      match_similarity: 0,\n      match_narrative_id: null,\n      entity_overlap: 0\n    }\n  }];\n}\n\n// Check for strong match (≥0.85) - auto-assign\nconst strongMatch = matchArray.find(m => m.similarity >= 0.85);\nif (strongMatch) {\n  return [{\n    json: {\n      ...currentItem,\n      clustering_action: 'assign_existing',\n      match_similarity: strongMatch.similarity,\n      match_narrative_id: strongMatch.narrative_id,\n      match_item_id: strongMatch.match_id,\n      entity_overlap: -1 // Not checked for strong matches\n    }\n  }];\n}\n\n// For moderate matches (0.75-0.85), check entity overlap\nconst bestMatch = matchArray[0];\nconst currentEntities = currentItem.ai_metadata?.entities || {};\nconst matchEntities = bestMatch.match_metadata?.entities || {};\n\n// Get all entity names from current item\nconst currentEntitySet = new Set([\n  ...(currentEntities.people || []),\n  ...(currentEntities.organizations || []),\n  ...(currentEntities.locations || [])\n].map(e => e.toLowerCase()));\n\n// Get all entity names from match\nconst matchEntitySet = new Set([\n  ...(matchEntities.people || []),\n  ...(matchEntities.organizations || []),\n  ...(matchEntities.locations || [])\n].map(e => e.toLowerCase()));\n\n// Count overlap\nlet overlapCount = 0;\nfor (const entity of currentEntitySet) {\n  if (matchEntitySet.has(entity)) overlapCount++;\n}\n\n// If ≥2 shared entities, assign to existing narrative\nif (overlapCount >= 2) {\n  return [{\n    json: {\n      ...currentItem,\n      clustering_action: 'assign_existing',\n      match_similarity: bestMatch.similarity,\n      match_narrative_id: bestMatch.narrative_id,\n      match_item_id: bestMatch.match_id,\n      entity_overlap: overlapCount\n    }\n  }];\n}\n\n// Otherwise, create new narrative\nreturn [{\n  json: {\n    ...currentItem,\n    clustering_action: 'create_new',\n    match_similarity: bestMatch.similarity,\n    match_narrative_id: null,\n    entity_overlap: overlapCount\n  }\n}];"
+      },
+      "id": "analyze-matches",
+      "name": "Analyze Matches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 300],
+      "notes": "REQ-AI-004: Check similarity threshold and entity overlap"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-check",
+              "leftValue": "={{ $json.clustering_action }}",
+              "rightValue": "create_new",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-create-new",
+      "name": "IF Create New Narrative",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET narrative_id = $2::uuid WHERE id = $1::uuid RETURNING id, narrative_id",
+        "options": {
+          "queryReplacement": "={{ $json.id }},={{ $json.match_narrative_id }}"
+        }
+      },
+      "id": "assign-existing-narrative",
       "name": "Assign to Existing Narrative",
       "type": "n8n-nodes-base.postgres",
-      "position": [1050, 300],
-      "notes": "Update items.narrative_id = existing_narrative_id"
+      "typeVersion": 2.5,
+      "position": [1800, 400],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Assign item to existing narrative"
     },
     {
-      "parameters": {},
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO narratives (title, first_seen, last_updated, item_count)\nVALUES ('Untitled Narrative', NOW(), NOW(), 1)\nRETURNING id, title",
+        "options": {}
+      },
+      "id": "create-narrative",
       "name": "Create New Narrative",
       "type": "n8n-nodes-base.postgres",
-      "position": [1050, 500],
-      "notes": "Insert new record in narratives table if no match found"
+      "typeVersion": 2.5,
+      "position": [1800, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Create new narrative record"
     },
     {
-      "parameters": {},
-      "name": "Generate Narrative Title",
-      "type": "n8n-nodes-base.openAi",
-      "position": [1250, 300],
-      "notes": "REQ-AI-ML-006: Generate neutral title (6-10 words) using GPT-4"
+      "parameters": {
+        "jsCode": "// Merge new narrative ID back to item\nconst item = $('Analyze Matches').item.json;\nconst narrative = $input.first().json;\n\nreturn [{\n  json: {\n    ...item,\n    new_narrative_id: narrative.id,\n    new_narrative_title: narrative.title,\n    needs_title_generation: true\n  }\n}];"
+      },
+      "id": "merge-narrative-id",
+      "name": "Merge Narrative ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2020, 200]
     },
     {
-      "parameters": {},
-      "name": "Generate Narrative Summary",
-      "type": "n8n-nodes-base.openAi",
-      "position": [1250, 400],
-      "notes": "REQ-AI-ML-007: Generate summary (2-3 sentences)"
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET narrative_id = $2::uuid WHERE id = $1::uuid RETURNING id",
+        "options": {
+          "queryReplacement": "={{ $json.id }},={{ $json.new_narrative_id }}"
+        }
+      },
+      "id": "link-item-to-narrative",
+      "name": "Link Item to Narrative",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2240, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
     },
     {
-      "parameters": {},
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AZURE_OPENAI_ENDPOINT }}/openai/deployments/{{ $env.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Generate a concise, neutral news headline (6-10 words) that accurately summarizes this news content. Be factual and avoid sensationalism. Output ONLY the title, nothing else.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(($json.title || '') + '\\n\\n' + ($json.content || '').substring(0, 2000)) }}\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 100\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "generate-title",
+      "name": "Generate Narrative Title (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2460, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "azure-openai-auth",
+          "name": "Azure OpenAI API Key"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "REQ-AI-ML-006: Generate neutral 6-10 word title"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract generated title\nconst item = $('Merge Narrative ID').item.json;\nconst response = $input.first().json;\n\nlet generatedTitle = 'Untitled Narrative';\ntry {\n  if (response.choices && response.choices[0]) {\n    generatedTitle = response.choices[0].message.content.trim();\n    // Remove quotes if present\n    generatedTitle = generatedTitle.replace(/^\"|\"$/g, '');\n  }\n} catch (e) {\n  generatedTitle = item.title?.substring(0, 100) || 'Untitled Narrative';\n}\n\nreturn [{\n  json: {\n    ...item,\n    generated_title: generatedTitle\n  }\n}];"
+      },
+      "id": "parse-title",
+      "name": "Parse Generated Title",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2680, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.AZURE_OPENAI_ENDPOINT }}/openai/deployments/{{ $env.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Write a brief, factual summary (2-3 sentences) of this news content. Be neutral and avoid editorializing. Focus on the key facts: who, what, when, where. Output ONLY the summary.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(($json.title || '') + '\\n\\n' + ($json.content || '').substring(0, 3000)) }}\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 300\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "generate-summary",
+      "name": "Generate Narrative Summary (OpenAI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2900, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "azure-openai-auth",
+          "name": "Azure OpenAI API Key"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "REQ-AI-ML-007: Generate 2-3 sentence summary"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract generated summary\nconst item = $('Parse Generated Title').item.json;\nconst response = $input.first().json;\n\nlet generatedSummary = null;\ntry {\n  if (response.choices && response.choices[0]) {\n    generatedSummary = response.choices[0].message.content.trim();\n  }\n} catch (e) {\n  generatedSummary = item.ai_metadata?.summary || null;\n}\n\nreturn [{\n  json: {\n    ...item,\n    generated_summary: generatedSummary\n  }\n}];"
+      },
+      "id": "parse-summary",
+      "name": "Parse Generated Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3120, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE narratives SET\n  title = $2,\n  summary = $3,\n  last_updated = NOW()\nWHERE id = $1::uuid\nRETURNING id, title",
+        "options": {
+          "queryReplacement": "={{ $json.new_narrative_id }},={{ $json.generated_title }},={{ $json.generated_summary }}"
+        }
+      },
+      "id": "update-narrative",
       "name": "Update Narrative Metadata",
       "type": "n8n-nodes-base.postgres",
-      "position": [1450, 300],
-      "notes": "Store title, summary, update last_updated timestamp"
+      "typeVersion": 2.5,
+      "position": [3340, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Save generated title and summary"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE narratives SET\n  item_count = item_count + 1,\n  last_updated = NOW()\nWHERE id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $('Analyze Matches').item.json.match_narrative_id }}"
+        }
+      },
+      "id": "increment-narrative-count",
+      "name": "Increment Narrative Count",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2020, 400],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Update item count for existing narrative"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE items SET status = 'clustered'::processing_status WHERE id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $json.id || $('Analyze Matches').item.json.id }}"
+        }
+      },
+      "id": "mark-clustered",
+      "name": "Mark Item Clustered",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT record_workflow_success('WF4_Narrative_Clustering')",
+        "options": {}
+      },
+      "id": "record-success",
+      "name": "Record Success",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT record_workflow_failure('WF4_Narrative_Clustering', $1)",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify({ error: $json.error || 'Unknown error', item_id: $json.id }) }}"
+        }
+      },
+      "id": "record-failure",
+      "name": "Record Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2680, 100],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "noop-circuit-open",
+      "name": "Skip (Circuit Open)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [920, 400]
     }
   ],
-  "connections": {},
+  "connections": {
+    "Schedule (10min)": {
+      "main": [
+        [
+          {
+            "node": "Check Circuit Breaker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Circuit Breaker": {
+      "main": [
+        [
+          {
+            "node": "IF Circuit Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Circuit Open": {
+      "main": [
+        [
+          {
+            "node": "Get Scored Items (No Narrative)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip (Circuit Open)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Scored Items (No Narrative)": {
+      "main": [
+        [
+          {
+            "node": "Find Similar Items (≥0.75)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Similar Items (≥0.75)": {
+      "main": [
+        [
+          {
+            "node": "Analyze Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Matches": {
+      "main": [
+        [
+          {
+            "node": "IF Create New Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Create New Narrative": {
+      "main": [
+        [
+          {
+            "node": "Create New Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assign to Existing Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign to Existing Narrative": {
+      "main": [
+        [
+          {
+            "node": "Increment Narrative Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Narrative Count": {
+      "main": [
+        [
+          {
+            "node": "Mark Item Clustered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Narrative": {
+      "main": [
+        [
+          {
+            "node": "Merge Narrative ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Narrative ID": {
+      "main": [
+        [
+          {
+            "node": "Link Item to Narrative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Item to Narrative": {
+      "main": [
+        [
+          {
+            "node": "Generate Narrative Title (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Narrative Title (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Parse Generated Title",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Generated Title": {
+      "main": [
+        [
+          {
+            "node": "Generate Narrative Summary (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Narrative Summary (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Parse Generated Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Generated Summary": {
+      "main": [
+        [
+          {
+            "node": "Update Narrative Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Narrative Metadata": {
+      "main": [
+        [
+          {
+            "node": "Mark Item Clustered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Item Clustered": {
+      "main": [
+        [
+          {
+            "node": "Record Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
   "active": false,
-  "settings": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "wf4-narrative-clustering-v2.0",
   "meta": {
-    "description": "REQ-AI-004, REQ-AI-ML-006, REQ-AI-ML-007: Semantic clustering of related items into narratives using vector similarity (cosine ≥ 0.75) and entity overlap. Generates AI titles and summaries for each narrative.",
-    "requirements": [
-      "REQ-AI-004: Semantic Clustering (vector + entity overlap)",
-      "REQ-AI-ML-006: Narrative Title Generation",
-      "REQ-AI-ML-007: Narrative Summary Generation"
-    ],
-    "trigger": "Database trigger when items.trust_score is set",
-    "cost_target": "$0.30/day (LLM for titles/summaries)"
+    "templateCredsSetupCompleted": false,
+    "instanceId": "nura-neural"
+  },
+  "id": "WF4_Narrative_Clustering",
+  "tags": [
+    {
+      "id": "clustering",
+      "name": "clustering"
+    },
+    {
+      "id": "narrative",
+      "name": "narrative"
+    },
+    {
+      "id": "mvp",
+      "name": "mvp"
+    }
+  ],
+  "__meta": {
+    "requirements": ["REQ-AI-004", "REQ-AI-ML-006", "REQ-AI-ML-007"],
+    "description": "Narrative Clustering: Semantic similarity (≥0.75) + entity overlap (≥2) clustering with AI-generated titles and summaries",
+    "cost_target": "$0.30/day (LLM for new narrative titles/summaries only)",
+    "schedule": "Every 10 minutes, batch of 15 items",
+    "clustering_rules": "≥0.85 similarity = auto-assign | 0.75-0.85 + ≥2 entities = assign | else = new narrative"
+  }
+}
   }
 }

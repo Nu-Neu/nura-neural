@@ -2,82 +2,594 @@
   "name": "WF6: System Monitoring & Cost Control",
   "nodes": [
     {
-      "parameters": {},
-      "name": "Daily Schedule (00:00 UTC)",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-hourly",
+      "name": "Hourly Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "position": [250, 300],
+      "typeVersion": 1.2,
+      "position": [260, 300],
+      "notes": "REQ-NF-001, REQ-NF-002: Run monitoring checks every hour"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "query": "SELECT \n  COUNT(*) FILTER (WHERE status = 'pending') as pending_count,\n  COUNT(*) FILTER (WHERE status = 'enriched') as enriched_count,\n  COUNT(*) FILTER (WHERE status = 'scored') as scored_count,\n  COUNT(*) FILTER (WHERE status = 'clustered') as clustered_count,\n  COUNT(*) FILTER (WHERE status = 'failed') as failed_count,\n  COUNT(*) as total_count,\n  COUNT(*) FILTER (WHERE ingested_at > NOW() - interval '24 hours') as items_24h,\n  COUNT(*) FILTER (WHERE ingested_at > NOW() - interval '1 hour') as items_1h\nFROM items\nWHERE ingested_at > NOW() - interval '7 days'",
+        "options": {}
+      },
+      "id": "query-item-stats",
+      "name": "Query Item Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 200],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Get processing pipeline statistics"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "query": "SELECT \n  workflow_id,\n  COUNT(*) FILTER (WHERE status = 'success') as success_count,\n  COUNT(*) FILTER (WHERE status = 'failure') as failure_count,\n  COUNT(*) as total_count,\n  ROUND(COUNT(*) FILTER (WHERE status = 'failure')::numeric / NULLIF(COUNT(*), 0) * 100, 2) as error_rate\nFROM workflow_state\nWHERE last_run > NOW() - interval '24 hours'\nGROUP BY workflow_id",
+        "options": {}
+      },
+      "id": "query-workflow-stats",
+      "name": "Query Workflow Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 350],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Get workflow execution statistics (24h)"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "query": "SELECT \n  workflow_id,\n  status,\n  consecutive_failures,\n  circuit_state,\n  last_run,\n  error_message\nFROM workflow_state\nWHERE circuit_state = 'open'\n   OR consecutive_failures >= 3",
+        "options": {}
+      },
+      "id": "query-circuit-breakers",
+      "name": "Query Circuit Breakers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Check for unhealthy workflows or high failure counts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile monitoring metrics from all sources\nconst itemStats = $('Query Item Stats').first().json;\nconst workflowStats = $('Query Workflow Stats').all().map(i => i.json);\nconst workflowHealth = $('Query Circuit Breakers').all().map(i => i.json);\n\nconst now = new Date();\n\n// Calculate overall health\nconst pendingCount = parseInt(itemStats.pending_count) || 0;\nconst failedCount = parseInt(itemStats.failed_count) || 0;\nconst items24h = parseInt(itemStats.items_24h) || 0;\nconst items1h = parseInt(itemStats.items_1h) || 0;\n\n// Calculate error rates\nlet totalErrors = 0;\nlet totalRuns = 0;\nfor (const wf of workflowStats) {\n  totalErrors += parseInt(wf.failure_count) || 0;\n  totalRuns += parseInt(wf.total_count) || 0;\n}\nconst overallErrorRate = totalRuns > 0 ? (totalErrors / totalRuns * 100) : 0;\n\n// Determine alert level\nlet alertLevel = 'normal';\nconst alerts = [];\n\n// REQ-NF-002: Backlog check (target < 100)\nif (pendingCount > 500) {\n  alertLevel = 'critical';\n  alerts.push(`CRITICAL: Processing backlog at ${pendingCount} items (threshold: 500)`);\n} else if (pendingCount > 100) {\n  alertLevel = alertLevel === 'critical' ? 'critical' : 'warning';\n  alerts.push(`WARNING: Processing backlog at ${pendingCount} items (target: < 100)`);\n}\n\n// Error rate check (threshold: 5%)\nif (overallErrorRate > 10) {\n  alertLevel = 'critical';\n  alerts.push(`CRITICAL: Error rate at ${overallErrorRate.toFixed(1)}% (threshold: 10%)`);\n} else if (overallErrorRate > 5) {\n  alertLevel = alertLevel === 'critical' ? 'critical' : 'warning';\n  alerts.push(`WARNING: Error rate at ${overallErrorRate.toFixed(1)}% (threshold: 5%)`);\n}\n\n// Workflow health check\nconst unhealthyWorkflows = workflowHealth.filter(wh => wh.circuit_state === 'open');\nif (unhealthyWorkflows.length > 0) {\n  alertLevel = 'critical';\n  for (const wh of unhealthyWorkflows) {\n    alerts.push(`CRITICAL: Workflow UNHEALTHY for ${wh.workflow_id}`);\n  }\n}\n\n// Items per hour check (throughput)\nif (items1h === 0 && items24h > 0) {\n  alertLevel = alertLevel === 'critical' ? 'critical' : 'warning';\n  alerts.push('WARNING: No items processed in the last hour');\n}\n\nconst metrics = {\n  timestamp: now.toISOString(),\n  alert_level: alertLevel,\n  alerts: alerts,\n  item_stats: {\n    pending: pendingCount,\n    enriched: parseInt(itemStats.enriched_count) || 0,\n    scored: parseInt(itemStats.scored_count) || 0,\n    clustered: parseInt(itemStats.clustered_count) || 0,\n    failed: failedCount,\n    total_7d: parseInt(itemStats.total_count) || 0,\n    processed_24h: items24h,\n    processed_1h: items1h\n  },\n  workflow_stats: workflowStats,\n  workflow_health: {\n    unhealthy_count: unhealthyWorkflows.length,\n    details: workflowHealth\n  },\n  error_rate: overallErrorRate.toFixed(2) + '%'\n};\n\nreturn [{ json: metrics }];"
+      },
+      "id": "compile-metrics",
+      "name": "Compile Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 350],
+      "notes": "Aggregate all monitoring data and determine alert level"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "alert-check",
+              "leftValue": "={{ $json.alert_level }}",
+              "rightValue": "normal",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-alert",
+      "name": "IF Alert Needed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 350]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "critical-check",
+              "leftValue": "={{ $json.alert_level }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-critical",
+      "name": "IF Critical",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if backlog is severe enough to pause ingestion\nconst metrics = $input.first().json;\nconst pendingCount = metrics.item_stats?.pending || 0;\n\nconst shouldPauseIngestion = pendingCount > 1000;\nconst unhealthyCount = metrics.workflow_health?.unhealthy_count || 0;\n\nreturn [{\n  json: {\n    ...metrics,\n    emergency_action: shouldPauseIngestion ? 'pause_ingestion' : 'none',\n    should_pause_ingestion: shouldPauseIngestion,\n    pause_reason: shouldPauseIngestion \n      ? `Backlog critical: ${pendingCount} pending items (threshold: 1000)` \n      : null\n  }\n}];"
+      },
+      "id": "check-emergency",
+      "name": "Check Emergency Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 200],
+      "notes": "Determine if emergency actions needed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "pause-check",
+              "leftValue": "={{ $json.should_pause_ingestion }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pause-ingestion",
+      "name": "IF Pause Ingestion",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1580, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.N8N_API_URL }}/workflows/WF1_Ingestion",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"active\": false }",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "pause-ingestion",
+      "name": "Pause WF1 Ingestion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 120],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "n8n-api-key",
+          "name": "n8n API Key"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Emergency: Deactivate ingestion workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO monitoring_logs (workflow_id, level, message, metadata, created_at)\nVALUES ('WF6', 'critical', 'EMERGENCY: Paused WF1_Ingestion due to backlog', $1::jsonb, NOW())",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify({ pending_count: $json.item_stats.pending, reason: $json.pause_reason }) }}"
+        }
+      },
+      "id": "log-emergency-action",
+      "name": "Log Emergency Action",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2020, 120],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO monitoring_logs (workflow_id, level, message, metadata, created_at)\nVALUES ('WF6', $1, $2, $3::jsonb, NOW())\nRETURNING id",
+        "options": {
+          "queryReplacement": "={{ $json.alert_level }},={{ 'Monitoring check: ' + $json.alerts.join('; ') }},={{ JSON.stringify($json) }}"
+        }
+      },
+      "id": "log-alert",
+      "name": "Log Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1360, 400],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Log warning-level alerts"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO monitoring_logs (workflow_id, level, message, metadata, created_at)\nVALUES ('WF6', 'info', 'Hourly monitoring check - all systems normal', $1::jsonb, NOW())",
+        "options": {
+          "queryReplacement": "={{ JSON.stringify($json) }}"
+        }
+      },
+      "id": "log-normal",
+      "name": "Log Normal Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1140, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Log when everything is OK"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Reset circuit breakers that have been open for >30 minutes\n-- This allows retry after cooldown period\nUPDATE workflow_state\nSET circuit_state = 'half-open',\n    consecutive_failures = GREATEST(0, consecutive_failures - 1)\nWHERE circuit_state = 'open'\n  AND last_run < NOW() - interval '30 minutes'\nRETURNING workflow_id",
+        "options": {}
+      },
+      "id": "reset-circuit-breakers",
+      "name": "Reset Old Circuit Breakers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1580, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Auto-reset circuit breakers after 30min cooldown"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Cleanup old monitoring logs (keep 30 days)\nDELETE FROM monitoring_logs WHERE created_at < NOW() - interval '30 days';\n-- Cleanup old workflow state entries for deleted workflows\nDELETE FROM workflow_state WHERE last_run < NOW() - interval '90 days';",
+        "options": {}
+      },
+      "id": "cleanup-old-logs",
+      "name": "Cleanup Old Logs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1800, 500],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      },
+      "notes": "Housekeeping: Remove logs older than 30 days"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT record_workflow_success('WF6_Monitoring')",
+        "options": {}
+      },
+      "id": "record-success",
+      "name": "Record Success",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2020, 400],
+      "credentials": {
+        "postgres": {
+          "id": "nura-postgres",
+          "name": "Nura PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "noop-no-pause",
+      "name": "Continue (No Pause Needed)",
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "notes": "Run monitoring checks daily at midnight UTC"
+      "position": [1800, 280]
+    }
+  ],
+  "connections": {
+    "Hourly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Query Item Stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Workflow Stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Circuit Breakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Item Stats": {
+      "main": [
+        [
+          {
+            "node": "Compile Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Workflow Stats": {
+      "main": [
+        [
+          {
+            "node": "Compile Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Circuit Breakers": {
+      "main": [
+        [
+          {
+            "node": "Compile Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Metrics": {
+      "main": [
+        [
+          {
+            "node": "IF Alert Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Alert Needed": {
+      "main": [
+        [
+          {
+            "node": "IF Critical",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Normal Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Critical": {
+      "main": [
+        [
+          {
+            "node": "Check Emergency Actions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Emergency Actions": {
+      "main": [
+        [
+          {
+            "node": "IF Pause Ingestion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Pause Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Pause WF1 Ingestion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continue (No Pause Needed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause WF1 Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Log Emergency Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Emergency Action": {
+      "main": [
+        [
+          {
+            "node": "Reset Old Circuit Breakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue (No Pause Needed)": {
+      "main": [
+        [
+          {
+            "node": "Reset Old Circuit Breakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Alert": {
+      "main": [
+        [
+          {
+            "node": "Reset Old Circuit Breakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Normal Status": {
+      "main": [
+        [
+          {
+            "node": "Reset Old Circuit Breakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Old Circuit Breakers": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Old Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Old Logs": {
+      "main": [
+        [
+          {
+            "node": "Record Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "wf6-monitoring-v2.0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "nura-neural"
+  },
+  "id": "WF6_Monitoring",
+  "tags": [
+    {
+      "id": "monitoring",
+      "name": "monitoring"
     },
     {
-      "parameters": {},
-      "name": "Query Daily Costs",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [450, 200],
-      "notes": "REQ-NF-001: Fetch Azure OpenAI usage from Cost Management API"
+      "id": "ops",
+      "name": "ops"
     },
     {
-      "parameters": {},
-      "name": "Calculate Total Spend",
-      "type": "n8n-nodes-base.function",
-      "position": [650, 200],
-      "notes": "Sum: Translation + Embeddings + Metadata + Titles/Summaries"
+      "id": "mvp",
+      "name": "mvp"
+    }
+  ],
+  "__meta": {
+    "requirements": ["REQ-NF-001", "REQ-NF-002"],
+    "description": "System Monitoring & Cost Control: Hourly health checks, circuit breaker management, emergency backlog handling",
+    "cost_target": "$0.00 per execution (no AI calls)",
+    "schedule": "Hourly",
+    "thresholds": {
+      "backlog_warning": 100,
+      "backlog_critical": 500,
+      "backlog_emergency": 1000,
+      "error_rate_warning": "5%",
+      "error_rate_critical": "10%",
+      "workflow_health_cooldown": "30 minutes"
     },
-    {
-      "parameters": {},
-      "name": "Check Budget Alert (>$1.00/day)",
-      "type": "n8n-nodes-base.if",
-      "position": [850, 200],
-      "notes": "CRITICAL: Alert if daily spend exceeds $1.00 threshold"
-    },
-    {
-      "parameters": {},
-      "name": "Query Processing Backlog",
-      "type": "n8n-nodes-base.postgres",
-      "position": [450, 350],
-      "notes": "REQ-NF-002: Count items with status = PENDING (target: < 100)"
-    },
-    {
-      "parameters": {},
-      "name": "Check Backlog Alert",
-      "type": "n8n-nodes-base.if",
-      "position": [850, 350],
-      "notes": "CRITICAL: Alert if backlog exceeds 500 items"
-    },
-    {
-      "parameters": {},
-      "name": "Query Error Rate",
-      "type": "n8n-nodes-base.postgres",
-      "position": [450, 500],
-      "notes": "Count failed workflow executions in last 24h"
-    },
-    {
-      "parameters": {},
-      "name": "Check Error Rate Alert",
-      "type": "n8n-nodes-base.if",
-      "position": [850, 500],
-      "notes": "CRITICAL: Alert if error rate > 5%"
-    },
-    {
-      "parameters": {},
-      "name": "Send Alert Email",
-      "type": "n8n-nodes-base.emailSend",
-      "position": [1050, 300],
-      "notes": "Email ops team with alert details"
-    },
-    {
-      "parameters": {},
-      "name": "Log Metrics to Database",
-      "type": "n8n-nodes-base.postgres",
-      "position": [1250, 300],
-      "notes": "Insert daily metrics into monitoring_logs table"
-    },
-    {
-      "parameters": {},
-      "name": "Emergency: Pause WF1 Ingestion",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [1050, 500],
-      "notes": "If backlog > 1000, pause ingestion for low-priority sources"
+    "emergency_actions": ["Pause WF1_Ingestion if backlog > 1000"]
+  }
+}
     }
   ],
   "connections": {},
