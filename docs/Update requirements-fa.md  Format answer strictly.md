@@ -1,6 +1,6 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# Update requirements-fa.md  Format answer strictly as Markdown suitable for saving to requirements-fa.md
+# Requirements Document
 
 
 ---
@@ -51,8 +51,8 @@ adr_compliance: [ADR-0001, ADR-0002, ADR-0003, ADR-0004]
 
 **معیارهای پذیرش:**
 
-1. Workflow در n8n هر ۱۵ دقیقه اجرا شود (cron: `*/15`)
-2. Workflow لیست ۵۰۰ منبع RSS از جدول `source_profiles` پردازش کند
+۱. Workflow در n8n هر ۱۵ دقیقه اجرا شود (cron: `*/15`)
+۲. Workflow لیست ۵۰۰ منبع RSS از جدول `source_profiles` پردازش کند
 3. هر آیتم دریافت‌شده با استفاده از `url_hash` (SHA-256) برای تکراری بودن بررسی شود
 4. اگر تکراری بود، آیتم Skip شود و با دلیل `DUPLICATE_URL` لاگ شود
 5. عکس HTML خام در Azure Blob Storage (Hot Tier) ذخیره شود با مسیر: `raw/{source_id}/{date}/{url_hash}.html`
