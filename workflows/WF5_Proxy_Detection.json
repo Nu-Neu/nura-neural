@@ -1,0 +1,98 @@
+{
+  "name": "WF5: State Proxy Detection",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Weekly Schedule (Sunday 00:00 UTC)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Run every Sunday at midnight UTC"
+    },
+    {
+      "parameters": {},
+      "name": "Query Candidate Sources",
+      "type": "n8n-nodes-base.postgres",
+      "position": [450, 300],
+      "notes": "REQ-AI-005: Select all INDIE_MEDIA and CITIZEN_JOURNALIST sources"
+    },
+    {
+      "parameters": {},
+      "name": "Get Regime Media Items",
+      "type": "n8n-nodes-base.postgres",
+      "position": [650, 200],
+      "notes": "Fetch 90-day window of items from REGIME_MEDIA sources"
+    },
+    {
+      "parameters": {},
+      "name": "Calculate Content Overlap",
+      "type": "n8n-nodes-base.function",
+      "position": [850, 300],
+      "notes": "Component 1 (30%): SimHash similarity ≥90% (Hamming distance ≤6)"
+    },
+    {
+      "parameters": {},
+      "name": "Calculate Narrative Alignment",
+      "type": "n8n-nodes-base.postgres",
+      "position": [850, 400],
+      "notes": "Component 2 (30%): Shared narratives without contradiction"
+    },
+    {
+      "parameters": {},
+      "name": "Calculate ProxyScore",
+      "type": "n8n-nodes-base.function",
+      "position": [1050, 300],
+      "notes": "ProxyScore = (C1 * 0.30) + (C2 * 0.30); MVP: C3 and C4 = 0"
+    },
+    {
+      "parameters": {},
+      "name": "Check Reclassification Threshold",
+      "type": "n8n-nodes-base.if",
+      "position": [1250, 300],
+      "notes": "If ProxyScore ≥ 70, reclassify to PROXY_SUSPECTED"
+    },
+    {
+      "parameters": {},
+      "name": "Generate LLM Explanation",
+      "type": "n8n-nodes-base.openAi",
+      "position": [1450, 300],
+      "notes": "Generate human-readable report for team review"
+    },
+    {
+      "parameters": {},
+      "name": "Update source_profiles",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1650, 300],
+      "notes": "Set type=PROXY_SUSPECTED, base_score=20"
+    },
+    {
+      "parameters": {},
+      "name": "Log to proxy_audits",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1650, 400],
+      "notes": "Insert audit record with evidence and explanation"
+    },
+    {
+      "parameters": {},
+      "name": "Send Weekly Email Report",
+      "type": "n8n-nodes-base.emailSend",
+      "position": [1850, 300],
+      "notes": "Email summary to team with reclassifications"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-AI-005: Weekly batch job to detect INDIE_MEDIA and CITIZEN_JOURNALIST sources that are state-controlled proxies. Uses content overlap (SimHash) and narrative alignment analysis. Auto-reclassifies sources with ProxyScore ≥ 70.",
+    "requirements": [
+      "REQ-AI-005: State Proxy Detection Algorithm",
+      "Content Overlap (30%): SimHash similarity ≥90%",
+      "Narrative Alignment (30%): Shared narratives without contradiction",
+      "Amplification Network (20%): MVP = 0 (Phase 2)",
+      "Technical Overlap (20%): MVP = 0 (Phase 2)"
+    ],
+    "schedule": "Every Sunday 00:00 UTC",
+    "cost_target": "$0.10/month (LLM for explanations only)"
+  }
+}

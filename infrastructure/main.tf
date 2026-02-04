@@ -44,6 +44,11 @@ data "azurerm_key_vault" "existing" {
   resource_group_name = var.existing_resource_group
 }
 
+data "azurerm_cognitive_account" "openai" {
+  name                = var.existing_openai_account
+  resource_group_name = var.existing_resource_group
+}
+
 # ===========================================
 # NEW RESOURCES - Azure AI Search
 # ===========================================
@@ -94,52 +99,6 @@ resource "azurerm_container_app" "redis" {
   }
 
   tags = var.tags
-}
-
-# RSSHub Container App (Internal - feeds generator)
-resource "azurerm_container_app" "rsshub" {
-  name                         = "${var.project_name}-rsshub"
-  container_app_environment_id = data.azurerm_container_app_environment.existing.id
-  resource_group_name          = data.azurerm_resource_group.existing.name
-  revision_mode                = "Single"
-
-  template {
-    container {
-      name   = "rsshub"
-      image  = "diygod/rsshub:latest"
-      cpu    = 0.25
-      memory = "0.5Gi"
-
-      env {
-        name  = "CACHE_TYPE"
-        value = "redis"
-      }
-      env {
-        name  = "REDIS_URL"
-        value = "redis://${azurerm_container_app.redis.name}:6379"
-      }
-      env {
-        name  = "NODE_ENV"
-        value = "production"
-      }
-    }
-    min_replicas = 1
-    max_replicas = 1
-  }
-
-  ingress {
-    external_enabled = false
-    target_port      = 1200
-    transport        = "http"
-    traffic_weight {
-      percentage      = 100
-      latest_revision = true
-    }
-  }
-
-  tags = var.tags
-
-  depends_on = [azurerm_container_app.redis]
 }
 
 # Miniflux Container App (RSS Aggregator)
@@ -193,46 +152,6 @@ resource "azurerm_container_app" "miniflux" {
 
   tags = var.tags
 }
-
-# SMRY Text Extractor Container App (COMMENTED - requires custom Docker build or public image)
-# resource "azurerm_container_app" "smry" {
-#   name                         = "${var.project_name}-smry"
-#   container_app_environment_id = data.azurerm_container_app_environment.existing.id
-#   resource_group_name          = data.azurerm_resource_group.existing.name
-#   revision_mode                = "Single"
-#
-#   template {
-#     container {
-#       name   = "smry"
-#       image  = "docker.io/mrmps/smry:latest"
-#       cpu    = 0.25
-#       memory = "0.5Gi"
-#
-#       env {
-#         name  = "PORT"
-#         value = "3000"
-#       }
-#     }
-#     min_replicas = 1
-#     max_replicas = 2
-#   }
-#
-#   ingress {
-#     external_enabled = false
-#     target_port      = 3000
-#     transport        = "http"
-#     traffic_weight {
-#       percentage      = 100
-#       latest_revision = true
-#     }
-#   }
-#
-#   identity {
-#     type = "SystemAssigned"
-#   }
-#
-#   tags = var.tags
-# }
 
 # ===========================================
 # PostgreSQL Databases (in existing server)

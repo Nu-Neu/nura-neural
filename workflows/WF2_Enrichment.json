@@ -1,0 +1,68 @@
+{
+  "name": "WF2: AI Enrichment Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When item status changes to PENDING",
+      "type": "n8n-nodes-base.postgresTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Trigger on new items with status=PENDING"
+    },
+    {
+      "parameters": {},
+      "name": "Detect Language",
+      "type": "n8n-nodes-base.function",
+      "position": [450, 300],
+      "notes": "Check if translation needed (non-English content)"
+    },
+    {
+      "parameters": {},
+      "name": "Translate with GPT-4",
+      "type": "n8n-nodes-base.openAi",
+      "position": [650, 300],
+      "notes": "REQ-AI-ML-002: Translate Farsi/Arabic to English using GPT-4o"
+    },
+    {
+      "parameters": {},
+      "name": "Extract Metadata",
+      "type": "n8n-nodes-base.openAi",
+      "position": [850, 300],
+      "notes": "REQ-AI-ML-003: Extract author, entities, dateline, sentiment"
+    },
+    {
+      "parameters": {},
+      "name": "Generate Embeddings",
+      "type": "n8n-nodes-base.openAi",
+      "position": [1050, 300],
+      "notes": "REQ-AI-ML-005: Generate 3072-dim vectors using text-embedding-3-small"
+    },
+    {
+      "parameters": {},
+      "name": "Update Item Record",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1250, 300],
+      "notes": "Store translation, metadata, embedding; set status=ENRICHED"
+    },
+    {
+      "parameters": {},
+      "name": "Archive Embedding to Blob",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1250, 450],
+      "notes": "Optional: Store embedding in nura-embeddings container"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-AI-ML-002, REQ-AI-ML-003, REQ-AI-ML-005: AI-powered enrichment pipeline. Translates non-English content, extracts structured metadata (author, entities, sentiment), and generates vector embeddings for semantic search.",
+    "requirements": [
+      "REQ-AI-ML-002: Translation (Farsi/Arabic → English)",
+      "REQ-AI-ML-003: Metadata Extraction (structured JSON)",
+      "REQ-AI-ML-005: Vector Embeddings (text-embedding-3-small, 3072-dim)"
+    ],
+    "trigger": "Database trigger on items.status = PENDING",
+    "cost_target": "$0.60/day (60k tokens/day @ $0.01/1k)"
+  }
+}

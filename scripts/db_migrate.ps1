@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $false)][string]$HostName = $env:DB_HOST,
-  [Parameter(Mandatory = $false)][int]$Port = [int]($env:DB_PORT ? $env:DB_PORT : 5432),
+  [Parameter(Mandatory = $false)][int]$Port = $(if ($env:DB_PORT) { [int]$env:DB_PORT } else { 5432 }),
   [Parameter(Mandatory = $false)][string]$Database = $env:DB_NAME,
   [Parameter(Mandatory = $false)][string]$User = $env:DB_USER,
   [Parameter(Mandatory = $false)][string]$Password = $env:DB_PASSWORD

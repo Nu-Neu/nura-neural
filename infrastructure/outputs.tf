@@ -29,16 +29,6 @@ output "miniflux_url" {
   value       = "https://${azurerm_container_app.miniflux.ingress[0].fqdn}"
 }
 
-output "rsshub_internal_url" {
-  description = "RSSHub internal URL (for Miniflux feed discovery)"
-  value       = "http://${azurerm_container_app.rsshub.name}"
-}
-
-# output "smry_internal_url" {
-#   description = "SMRY text extractor internal URL (for n8n)"
-#   value       = "http://${azurerm_container_app.smry.name}:3000"
-# }
-
 output "redis_internal_url" {
   description = "Redis internal URL (for caching)"
   value       = "redis://${azurerm_container_app.redis.name}:6379"
@@ -97,6 +87,16 @@ output "embeddings_container" {
 output "key_vault_name" {
   description = "Key Vault name for secrets"
   value       = data.azurerm_key_vault.existing.name
+}
+
+output "openai_endpoint" {
+  description = "Azure OpenAI endpoint URL"
+  value       = data.azurerm_cognitive_account.openai.endpoint
+}
+
+output "openai_account_name" {
+  description = "Azure OpenAI account name"
+  value       = data.azurerm_cognitive_account.openai.name
 }
 
 output "key_vault_uri" {

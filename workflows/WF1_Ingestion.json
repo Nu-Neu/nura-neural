@@ -1,0 +1,62 @@
+{
+  "name": "WF1: Content Ingestion Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When called by schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Poll RSS feeds every 30 minutes"
+    },
+    {
+      "parameters": {},
+      "name": "Poll Miniflux API",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 300],
+      "notes": "Fetch unread items from Miniflux"
+    },
+    {
+      "parameters": {},
+      "name": "Poll Twitter API",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 450],
+      "notes": "Fetch recent tweets from monitored accounts"
+    },
+    {
+      "parameters": {},
+      "name": "Check Deduplication",
+      "type": "n8n-nodes-base.postgres",
+      "position": [650, 300],
+      "notes": "REQ-ING-003: Check URL hash + SimHash for duplicates"
+    },
+    {
+      "parameters": {},
+      "name": "Archive to Blob Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 300],
+      "notes": "REQ-ING-004: Archive raw HTML to Azure Blob (nura-content)"
+    },
+    {
+      "parameters": {},
+      "name": "Insert to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1050, 300],
+      "notes": "Insert into items table with status=PENDING"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-ING-001, REQ-ING-002: Automated content ingestion from RSS feeds (Miniflux) and Twitter API. Implements deduplication (URL hash + SimHash) and archives raw HTML to Azure Blob Storage.",
+    "requirements": [
+      "REQ-ING-001: RSS Feed Polling (Miniflux)",
+      "REQ-ING-002: Twitter Polling (API v2)",
+      "REQ-ING-003: Deduplication (URL hash + SimHash)",
+      "REQ-ING-004: Archive to Azure Blob Storage"
+    ],
+    "schedule": "Every 30 minutes",
+    "cost_target": "$0.00/day (no LLM calls)"
+  }
+}

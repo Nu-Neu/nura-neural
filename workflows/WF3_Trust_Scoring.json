@@ -1,0 +1,89 @@
+{
+  "name": "WF3: Trust Scoring Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When item enriched",
+      "type": "n8n-nodes-base.postgresTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Trigger on items.status = ENRICHED"
+    },
+    {
+      "parameters": {},
+      "name": "Calculate Trust Score Components",
+      "type": "n8n-nodes-base.function",
+      "position": [450, 300],
+      "notes": "REQ-AI-001: Calculate 5-component trust score (0-95)"
+    },
+    {
+      "parameters": {},
+      "name": "Component 1: Source Credibility",
+      "type": "n8n-nodes-base.postgres",
+      "position": [650, 200],
+      "notes": "Lookup source_profiles.base_score (0-30 points)"
+    },
+    {
+      "parameters": {},
+      "name": "Component 2: Content Quality",
+      "type": "n8n-nodes-base.function",
+      "position": [650, 300],
+      "notes": "REQ-AI-ML-004: Analyze byline, dateline, citations (0-25 points)"
+    },
+    {
+      "parameters": {},
+      "name": "Component 3: Corroboration",
+      "type": "n8n-nodes-base.postgres",
+      "position": [650, 400],
+      "notes": "Vector search for similar items, count HIGH trust sources (0-20 points)"
+    },
+    {
+      "parameters": {},
+      "name": "Component 4: Freshness",
+      "type": "n8n-nodes-base.function",
+      "position": [850, 200],
+      "notes": "Age penalty: 0-5 days = 0, 5-10 days = -5, >10 days = -10"
+    },
+    {
+      "parameters": {},
+      "name": "Component 5: Consistency",
+      "type": "n8n-nodes-base.function",
+      "position": [850, 300],
+      "notes": "Check for contradictions with HIGH trust sources (0-10 points)"
+    },
+    {
+      "parameters": {},
+      "name": "Sum Total Score",
+      "type": "n8n-nodes-base.function",
+      "position": [1050, 300],
+      "notes": "Total = C1 + C2 + C3 + C4 + C5; Clamp to [15, 95]"
+    },
+    {
+      "parameters": {},
+      "name": "Generate Explanation",
+      "type": "n8n-nodes-base.function",
+      "position": [1250, 300],
+      "notes": "REQ-AI-003: Template-based explanation (no LLM)"
+    },
+    {
+      "parameters": {},
+      "name": "Insert to trust_signals",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1450, 300],
+      "notes": "Store breakdown and explanation; update items.trust_score"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-AI-001, REQ-AI-002, REQ-AI-003: Transparent trust scoring using 5 components (Source Credibility, Content Quality, Corroboration, Freshness, Consistency). Generates human-readable explanations.",
+    "requirements": [
+      "REQ-AI-001: 5-Component Trust Score (0-95 scale)",
+      "REQ-AI-002: Source Type Base Scores",
+      "REQ-AI-003: Template-Based Explanations"
+    ],
+    "trigger": "Database trigger on items.status = ENRICHED",
+    "cost_target": "$0.00/day (no LLM calls)"
+  }
+}

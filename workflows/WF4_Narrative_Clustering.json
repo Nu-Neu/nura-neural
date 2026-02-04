@@ -1,0 +1,82 @@
+{
+  "name": "WF4: Narrative Clustering Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When trust score calculated",
+      "type": "n8n-nodes-base.postgresTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Trigger when items.trust_score is set"
+    },
+    {
+      "parameters": {},
+      "name": "Vector Search for Similar Items",
+      "type": "n8n-nodes-base.postgres",
+      "position": [450, 300],
+      "notes": "REQ-AI-004: Search 14-day window with cosine similarity ≥ 0.75"
+    },
+    {
+      "parameters": {},
+      "name": "Check Strong Match (≥0.85)",
+      "type": "n8n-nodes-base.if",
+      "position": [650, 300],
+      "notes": "If cosine_sim ≥ 0.85, assign to existing narrative immediately"
+    },
+    {
+      "parameters": {},
+      "name": "Check Entity Overlap",
+      "type": "n8n-nodes-base.function",
+      "position": [850, 400],
+      "notes": "For moderate matches (≥0.75), check if ≥2 shared entities"
+    },
+    {
+      "parameters": {},
+      "name": "Assign to Existing Narrative",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1050, 300],
+      "notes": "Update items.narrative_id = existing_narrative_id"
+    },
+    {
+      "parameters": {},
+      "name": "Create New Narrative",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1050, 500],
+      "notes": "Insert new record in narratives table if no match found"
+    },
+    {
+      "parameters": {},
+      "name": "Generate Narrative Title",
+      "type": "n8n-nodes-base.openAi",
+      "position": [1250, 300],
+      "notes": "REQ-AI-ML-006: Generate neutral title (6-10 words) using GPT-4"
+    },
+    {
+      "parameters": {},
+      "name": "Generate Narrative Summary",
+      "type": "n8n-nodes-base.openAi",
+      "position": [1250, 400],
+      "notes": "REQ-AI-ML-007: Generate summary (2-3 sentences)"
+    },
+    {
+      "parameters": {},
+      "name": "Update Narrative Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1450, 300],
+      "notes": "Store title, summary, update last_updated timestamp"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-AI-004, REQ-AI-ML-006, REQ-AI-ML-007: Semantic clustering of related items into narratives using vector similarity (cosine ≥ 0.75) and entity overlap. Generates AI titles and summaries for each narrative.",
+    "requirements": [
+      "REQ-AI-004: Semantic Clustering (vector + entity overlap)",
+      "REQ-AI-ML-006: Narrative Title Generation",
+      "REQ-AI-ML-007: Narrative Summary Generation"
+    ],
+    "trigger": "Database trigger when items.trust_score is set",
+    "cost_target": "$0.30/day (LLM for titles/summaries)"
+  }
+}

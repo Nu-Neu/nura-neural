@@ -1,0 +1,101 @@
+{
+  "name": "WF6: System Monitoring & Cost Control",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Daily Schedule (00:00 UTC)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1,
+      "notes": "Run monitoring checks daily at midnight UTC"
+    },
+    {
+      "parameters": {},
+      "name": "Query Daily Costs",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 200],
+      "notes": "REQ-NF-001: Fetch Azure OpenAI usage from Cost Management API"
+    },
+    {
+      "parameters": {},
+      "name": "Calculate Total Spend",
+      "type": "n8n-nodes-base.function",
+      "position": [650, 200],
+      "notes": "Sum: Translation + Embeddings + Metadata + Titles/Summaries"
+    },
+    {
+      "parameters": {},
+      "name": "Check Budget Alert (>$1.00/day)",
+      "type": "n8n-nodes-base.if",
+      "position": [850, 200],
+      "notes": "CRITICAL: Alert if daily spend exceeds $1.00 threshold"
+    },
+    {
+      "parameters": {},
+      "name": "Query Processing Backlog",
+      "type": "n8n-nodes-base.postgres",
+      "position": [450, 350],
+      "notes": "REQ-NF-002: Count items with status = PENDING (target: < 100)"
+    },
+    {
+      "parameters": {},
+      "name": "Check Backlog Alert",
+      "type": "n8n-nodes-base.if",
+      "position": [850, 350],
+      "notes": "CRITICAL: Alert if backlog exceeds 500 items"
+    },
+    {
+      "parameters": {},
+      "name": "Query Error Rate",
+      "type": "n8n-nodes-base.postgres",
+      "position": [450, 500],
+      "notes": "Count failed workflow executions in last 24h"
+    },
+    {
+      "parameters": {},
+      "name": "Check Error Rate Alert",
+      "type": "n8n-nodes-base.if",
+      "position": [850, 500],
+      "notes": "CRITICAL: Alert if error rate > 5%"
+    },
+    {
+      "parameters": {},
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "position": [1050, 300],
+      "notes": "Email ops team with alert details"
+    },
+    {
+      "parameters": {},
+      "name": "Log Metrics to Database",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1250, 300],
+      "notes": "Insert daily metrics into monitoring_logs table"
+    },
+    {
+      "parameters": {},
+      "name": "Emergency: Pause WF1 Ingestion",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 500],
+      "notes": "If backlog > 1000, pause ingestion for low-priority sources"
+    }
+  ],
+  "connections": {},
+  "active": false,
+  "settings": {},
+  "meta": {
+    "description": "REQ-NF-001, REQ-NF-002: Daily monitoring of system health, costs, and performance. Tracks Azure OpenAI spend (target: < $1.00/day), processing backlog (target: < 100 items), and error rates. Sends alerts and takes emergency actions if thresholds exceeded.",
+    "requirements": [
+      "REQ-NF-001: Cost Monitoring (target: < $1.00/day, $28/month)",
+      "REQ-NF-002: Performance Monitoring (backlog < 100 items)",
+      "Error Rate Monitoring (target: < 5%)",
+      "Emergency backlog controls (pause ingestion if > 1000 items)"
+    ],
+    "schedule": "Daily at 00:00 UTC",
+    "alerts": [
+      "CRITICAL: Daily spend > $1.00",
+      "CRITICAL: Backlog > 500 items",
+      "CRITICAL: Error rate > 5%"
+    ]
+  }
+}

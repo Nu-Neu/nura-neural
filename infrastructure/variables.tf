@@ -47,6 +47,12 @@ variable "existing_key_vault" {
   default     = "irdecode-prod-kv"
 }
 
+variable "existing_openai_account" {
+  description = "Name of existing Azure OpenAI Cognitive Services account"
+  type        = string
+  default     = "irdecode-prod-openai"
+}
+
 variable "existing_acr_name" {
   description = "Name of existing Azure Container Registry"
   type        = string
