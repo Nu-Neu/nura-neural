@@ -1,40 +1,47 @@
+[CmdletBinding()]
 param(
-  [Parameter(Mandatory = $false)][string]$HostName = $env:DB_HOST,
-  [Parameter(Mandatory = $false)][int]$Port = $(if ($env:DB_PORT) { [int]$env:DB_PORT } else { 5432 }),
-  [Parameter(Mandatory = $false)][string]$Database = $env:DB_NAME,
-  [Parameter(Mandatory = $false)][string]$User = $env:DB_USER,
-  [Parameter(Mandatory = $false)][string]$Password = $env:DB_PASSWORD
+  [string]$DbHost = $env:DB_HOST,
+  [string]$DbPort = $env:DB_PORT,
+  [string]$DbName = $env:DB_NAME,
+  [string]$DbUser = $env:DB_USER,
+  [string]$DbPassword = $env:DB_PASSWORD
 )
 
 $ErrorActionPreference = 'Stop'
 
-function Require($name, $value) {
-  if (-not $value) { throw "Missing required parameter/env var: $name" }
+foreach ($pair in @{
+  DB_HOST = $DbHost
+  DB_PORT = $DbPort
+  DB_NAME = $DbName
+  DB_USER = $DbUser
+  DB_PASSWORD = $DbPassword
+}.GetEnumerator()) {
+  if (-not $pair.Value) { throw "Missing required value: $($pair.Key)" }
 }
 
-Require 'DB_HOST' $HostName
-Require 'DB_NAME' $Database
-Require 'DB_USER' $User
-Require 'DB_PASSWORD' $Password
+$docker = Get-Command docker -ErrorAction Stop
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$migrationsDir = Join-Path $repoRoot 'database/migrations'
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+$migrationsPath = Join-Path $repoRoot 'database/migrations'
 
-powershell -File (Join-Path $repoRoot 'scripts/db_bootstrap_baseline_migration.ps1')
-
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-  throw "Docker is required to run Flyway in this setup. Install Docker Desktop or add Flyway CLI to PATH and update this script."
+if (-not (Test-Path $migrationsPath)) {
+  throw "Migrations directory not found: $migrationsPath"
 }
 
-$jdbc = "jdbc:postgresql://$HostName`:$Port/$Database"
+# Flyway docker expects JDBC URL
+$jdbc = "jdbc:postgresql://$DbHost`:$DbPort/$DbName"
 
-Write-Host "Running migrations against $jdbc"
+Write-Host "Running Flyway migrations against $jdbc"
 
-docker run --rm `
-  -e FLYWAY_URL="$jdbc" `
-  -e FLYWAY_USER="$User" `
-  -e FLYWAY_PASSWORD="$Password" `
-  -e FLYWAY_SCHEMAS=public `
-  -v "${migrationsDir}:/flyway/sql" `
+& $docker.Source run --rm `
+  -e "FLYWAY_URL=$jdbc" `
+  -e "FLYWAY_USER=$DbUser" `
+  -e "FLYWAY_PASSWORD=$DbPassword" `
+  -e "FLYWAY_SCHEMAS=public" `
+  -v "${migrationsPath}:/flyway/sql" `
   flyway/flyway:10 `
   -connectRetries=10 migrate
+
+if ($LASTEXITCODE -ne 0) { throw "Flyway migrate failed with exit code $LASTEXITCODE" }
+
+Write-Host "Flyway migrate completed successfully."
