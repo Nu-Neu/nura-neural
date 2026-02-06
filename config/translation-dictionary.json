@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-02-06",
+  "description": "Proper noun translation dictionary for WF01. Ensures consistent translation of Iranian political entities.",
+  "proper_nouns": [
+    {"fa": "سپاه پاسداران", "en": "IRGC", "category": "military"},
+    {"fa": "بسیج", "en": "Basij", "category": "paramilitary"},
+    {"fa": "نیروی قدس", "en": "Quds Force", "category": "military"},
+    {"fa": "ارتش", "en": "Artesh", "category": "military"},
+    {"fa": "مهسا امینی", "en": "Mahsa Amini", "category": "person"},
+    {"fa": "ژینا امینی", "en": "Jina Amini", "category": "person"},
+    {"fa": "نیکا شاکرمی", "en": "Nika Shakarami", "category": "person"},
+    {"fa": "محسن شکاری", "en": "Mohsen Shekari", "category": "person"},
+    {"fa": "علی خامنه‌ای", "en": "Ali Khamenei", "category": "leader"},
+    {"fa": "ابراهیم رئیسی", "en": "Ebrahim Raisi", "category": "leader"},
+    {"fa": "محمدجواد ظریف", "en": "Mohammad Javad Zarif", "category": "politician"},
+    {"fa": "زاهدان", "en": "Zahedan", "category": "city"},
+    {"fa": "کرمانشاه", "en": "Kermanshah", "category": "city"},
+    {"fa": "سنندج", "en": "Sanandaj", "category": "city"},
+    {"fa": "مهاباد", "en": "Mahabad", "category": "city"},
+    {"fa": "زندان اوین", "en": "Evin Prison", "category": "location"},
+    {"fa": "زندان رجایی‌شهر", "en": "Rajai Shahr Prison", "category": "location"},
+    {"fa": "وزارت اطلاعات", "en": "MOIS", "category": "organization"},
+    {"fa": "گشت ارشاد", "en": "Morality Police", "category": "organization"},
+    {"fa": "جمعه خونین زاهدان", "en": "Zahedan Bloody Friday", "category": "event"}
+  ]
+}

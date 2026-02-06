@@ -30,7 +30,7 @@ A neural network project.
   - schema.sql
   - migrations/
     - README.md
-    - V1__baseline.sql (example baseline)
+    - V001__baseline.sql
 - scripts/
   - db_bootstrap_baseline_migration.ps1
   - db_migrate.ps1
