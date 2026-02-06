@@ -1,37 +1,21 @@
-# ===========================================
-# Outputs - Nura Neural Infrastructure
-# ===========================================
-
-# ===========================================
-# Azure AI Search
-# ===========================================
-output "search_service_name" {
-  description = "Azure AI Search service name"
-  value       = azurerm_search_service.nura.name
+output "vm_public_ip" {
+  description = "Public IP of nura-prod-vm"
+  value       = azurerm_public_ip.vm.ip_address
 }
 
-output "search_endpoint" {
-  description = "Azure AI Search endpoint URL"
-  value       = "https://${azurerm_search_service.nura.name}.search.windows.net"
+output "vm_private_ip" {
+  description = "Private IP of nura-prod-vm"
+  value       = azurerm_network_interface.vm.ip_configuration[0].private_ip_address
 }
 
-output "search_admin_key" {
-  description = "Azure AI Search admin key (sensitive)"
-  value       = azurerm_search_service.nura.primary_key
-  sensitive   = true
+output "vm_ssh_command" {
+  description = "Convenience SSH command"
+  value       = "ssh ${var.vm_admin_username}@${azurerm_public_ip.vm.ip_address}"
 }
 
-# ===========================================
-# Container Apps URLs
-# ===========================================
-output "miniflux_url" {
-  description = "Miniflux RSS aggregator URL (external)"
-  value       = "https://${azurerm_container_app.miniflux.ingress[0].fqdn}"
-}
-
-output "redis_internal_url" {
-  description = "Redis internal URL (for caching)"
-  value       = "redis://${azurerm_container_app.redis.name}:6379"
+output "queue_redis_endpoint" {
+  description = "Redis endpoint serving n8n queue traffic"
+  value       = "redis://${azurerm_public_ip.vm.ip_address}:${var.queue_redis_port}"
 }
 
 # ===========================================
@@ -55,6 +39,11 @@ output "nura_database" {
 output "miniflux_database" {
   description = "Miniflux database name"
   value       = azurerm_postgresql_flexible_server_database.miniflux.name
+}
+
+output "n8n_database" {
+  description = "n8n internal database name"
+  value       = azurerm_postgresql_flexible_server_database.n8n.name
 }
 
 output "postgres_connection_string" {
@@ -117,23 +106,30 @@ output "n8n_credential_config" {
       ssl      = "require"
       note     = "Get user/password from Key Vault or terraform.tfvars"
     }
-    azure_ai_search = {
-      endpoint = "https://${azurerm_search_service.nura.name}.search.windows.net"
-      note     = "Get API key from Key Vault secret: nura-search-api-key"
-    }
     redis = {
-      host = azurerm_container_app.redis.name
-      port = 6379
+      host = azurerm_public_ip.vm.ip_address
+      port = var.queue_redis_port
       ssl  = false
+      note = "Runs on nura-prod-vm via Docker Compose"
     }
-    miniflux = {
-      url  = "https://${azurerm_container_app.miniflux.ingress[0].fqdn}"
-      note = "API key available in Miniflux settings after first login"
+    api = {
+      base_url = var.vm_domain_name_label != "" ? "https://${var.vm_domain_name_label}.${data.azurerm_resource_group.existing.location}.cloudapp.azure.com" : "http://${azurerm_public_ip.vm.ip_address}"
+      note     = "Front Door should terminate TLS before hitting VM"
     }
-    # smry = {
-    #   url = "http://${azurerm_container_app.smry.name}:3000"
-    # }
   }
+}
+
+# ===========================================
+# Azure Front Door
+# ===========================================
+output "frontdoor_endpoint" {
+  description = "Front Door endpoint URL"
+  value       = azurerm_cdn_frontdoor_endpoint.main.host_name
+}
+
+output "frontdoor_url" {
+  description = "Full Front Door URL with HTTPS"
+  value       = "https://${azurerm_cdn_frontdoor_endpoint.main.host_name}"
 }
 
 # ===========================================
@@ -146,32 +142,30 @@ output "deployment_summary" {
     ╔══════════════════════════════════════════════════════════════╗
     ║              NURA NEURAL - DEPLOYMENT COMPLETE               ║
     ╠══════════════════════════════════════════════════════════════╣
-    ║ AZURE AI SEARCH                                              ║
-    ║   Service:    ${azurerm_search_service.nura.name}
-    ║   Endpoint:   https://${azurerm_search_service.nura.name}.search.windows.net
-    ║   SKU:        ${azurerm_search_service.nura.sku}
+    ║ VM STACK                                                     ║
+    ║   VM:        ${local.vm_name} (${var.vm_size})
+    ║   Public IP: ${azurerm_public_ip.vm.ip_address}
+    ║   Docker:    Redis, Miniflux, RSSHub, FastAPI, Nginx         ║
     ╠══════════════════════════════════════════════════════════════╣
-    ║ CONTAINER APPS                                               ║
-    ║   Miniflux:   https://${azurerm_container_app.miniflux.ingress[0].fqdn}
-    ║   RSSHub:     ${azurerm_container_app.rsshub.name} (internal)
-    ║   Redis:      ${azurerm_container_app.redis.name}:6379 (internal)
-    ║   SMRY:       (commented - requires custom Docker build)     ║
+    ║ FRONT DOOR                                                   ║
+    ║   Endpoint:   https://${azurerm_cdn_frontdoor_endpoint.main.host_name}
+    ║   Miniflux:   https://${azurerm_cdn_frontdoor_endpoint.main.host_name}/miniflux/
+    ║   RSSHub:     https://${azurerm_cdn_frontdoor_endpoint.main.host_name}/rsshub/
     ╠══════════════════════════════════════════════════════════════╣
     ║ POSTGRESQL                                                   ║
     ║   Host:       ${data.azurerm_postgresql_flexible_server.existing.fqdn}
-    ║   Databases:  miniflux, nura
+    ║   Databases:  miniflux, n8n, nura
     ╠══════════════════════════════════════════════════════════════╣
     ║ BLOB STORAGE                                                 ║
     ║   Account:    ${data.azurerm_storage_account.existing.name}
     ║   Containers: nura-content, nura-embeddings
     ╠══════════════════════════════════════════════════════════════╣
     ║ NEXT STEPS                                                   ║
-    ║   1. Apply database schema: psql -f database/schema.sql      ║
-    ║   2. Create AI Search indexes: ./create-search-indexes.ps1   ║
-    ║   3. Configure n8n credentials (see n8n_credential_config)   ║
-    ║   4. Import n8n workflows from workflows/*.json              ║
-    ║   5. Add RSS feeds to Miniflux                               ║
-    ║   6. Deploy SMRY: Build & push custom Docker image to ACR    ║
+    ║   1. Apply Flyway migrations from database/migrations/       ║
+    ║   2. Configure n8n queue credentials (see outputs)           ║
+    ║   3. Import n8n workflows from workflows/*.json              ║
+    ║   4. Add RSS feeds to Miniflux via Front Door                ║
+    ║   5. Test Front Door routes and caching                      ║
     ╚══════════════════════════════════════════════════════════════╝
 
   EOT

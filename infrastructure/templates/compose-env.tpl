@@ -1,0 +1,11 @@
+POSTGRES_HOST=${postgres_host}
+POSTGRES_PORT=5432
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+NURA_DATABASE=${nura_database}
+MINIFLUX_DATABASE=${miniflux_database}
+MINIFLUX_ADMIN_USER=${miniflux_admin_user}
+MINIFLUX_ADMIN_PASSWORD=${miniflux_admin_password}
+MINIFLUX_DATABASE_URL=postgres://${postgres_user}:${postgres_password}@${postgres_host}:5432/${miniflux_database}?sslmode=require
+FASTAPI_DATABASE_URL=postgresql://${postgres_user}:${postgres_password}@${postgres_host}:5432/${nura_database}?sslmode=require
+FASTAPI_ENV=${fastapi_environment}
